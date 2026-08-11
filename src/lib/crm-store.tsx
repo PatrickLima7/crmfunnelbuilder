@@ -123,7 +123,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
       meta: Math.round(((i + 1) / 9) * DAILY_GOAL),
     })),
   );
-  const shiftStart = useRef(Date.now() - 5 * 3600 * 1000);
+  const shiftStart = useRef(Date.now() - 4 * 3600 * 1000);
   const completedAt = useRef<number | null>(null);
   const firedAlerts = useRef<Record<string, boolean>>({});
   const goalCelebrated = useRef(false);
