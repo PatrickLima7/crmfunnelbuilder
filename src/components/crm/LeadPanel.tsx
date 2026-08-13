@@ -118,8 +118,13 @@ export function LeadPanel({ operator }: { operator: string }) {
               {allDone ? "Próximo lead" : "Complete as 3 etapas para avançar"}
             </Button>
           </div>
+
+          {crm.stepDone[0] && <WhatsappChat className="h-[460px]" />}
         </div>
       )}
+
+      <CallScriptModal />
     </section>
+
   );
 }
