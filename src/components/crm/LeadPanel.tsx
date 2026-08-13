@@ -3,6 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { STEPS, formatClock } from "@/lib/crm-data";
 import { useCrm } from "@/lib/crm-store";
+import { CallScriptModal } from "./CallScriptModal";
+import { WhatsappChat } from "./WhatsappChat";
+
 
 export function LeadPanel({ operator }: { operator: string }) {
   const crm = useCrm();
