@@ -43,7 +43,7 @@ export function WhatsappChat({ className = "" }: { className?: string }) {
             <Badge className="animate-pulse-alert bg-whatsapp text-success-foreground">{crm.unread}</Badge>
           )}
         </div>
-        <Button size="icon-sm" variant="ghost" onClick={crm.toggleMute} aria-label={crm.muted ? "Ativar som" : "Silenciar"}>
+        <Button size="icon" variant="ghost" onClick={crm.toggleMute} aria-label={crm.muted ? "Ativar som" : "Silenciar"}>
           {crm.muted ? <BellOff className="size-4" /> : <Bell className="size-4" />}
         </Button>
       </div>
@@ -110,10 +110,10 @@ export function WhatsappChat({ className = "" }: { className?: string }) {
           send(draft);
         }}
       >
-        <Button type="button" size="icon-sm" variant="ghost" onClick={() => setShowEmoji((v) => !v)} aria-label="Emojis">
+        <Button type="button" size="icon" variant="ghost" onClick={() => setShowEmoji((v) => !v)} aria-label="Emojis">
           <Smile className="size-4" />
         </Button>
-        <Button type="button" size="icon-sm" variant="ghost" onClick={() => fileRef.current?.click()} aria-label="Anexar arquivo">
+        <Button type="button" size="icon" variant="ghost" onClick={() => fileRef.current?.click()} aria-label="Anexar arquivo">
           <Paperclip className="size-4" />
         </Button>
         <input
@@ -132,7 +132,7 @@ export function WhatsappChat({ className = "" }: { className?: string }) {
           placeholder="Escreva uma mensagem"
           className="h-9"
         />
-        <Button type="submit" size="icon-sm" variant="whatsapp" aria-label="Enviar">
+        <Button type="submit" size="icon" variant="whatsapp" aria-label="Enviar">
           <Send className="size-4" />
         </Button>
       </form>
