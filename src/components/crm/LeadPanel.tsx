@@ -3,6 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { STEPS, formatClock } from "@/lib/crm-data";
 import { useCrm } from "@/lib/crm-store";
+import { CallScriptModal } from "./CallScriptModal";
+import { WhatsappChat } from "./WhatsappChat";
+
 
 export function LeadPanel({ operator }: { operator: string }) {
   const crm = useCrm();
@@ -115,8 +118,13 @@ export function LeadPanel({ operator }: { operator: string }) {
               {allDone ? "Próximo lead" : "Complete as 3 etapas para avançar"}
             </Button>
           </div>
+
+          {crm.stepDone[0] && <WhatsappChat className="h-[460px]" />}
         </div>
       )}
+
+      <CallScriptModal />
     </section>
+
   );
 }
