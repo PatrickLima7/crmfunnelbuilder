@@ -271,7 +271,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
 
   const sendMessage: CrmValue["sendMessage"] = (text, attachment) => {
     const id = `o-${Date.now()}`;
-    pushMessage({ id, from: "operator", text, at: Date.now(), status: "sent", attachment });
+    pushMessage({ id, from: "operator", text, at: Date.now(), status: "sent", ...(attachment ? { attachment } : {}) });
     window.setTimeout(
       () => setMessages((m) => m.map((x) => (x.id === id ? { ...x, status: "delivered" } : x))),
       800,
