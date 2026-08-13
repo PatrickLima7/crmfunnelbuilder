@@ -11,7 +11,7 @@ import {
   PhoneOff,
   Timer,
 } from "lucide-react";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
@@ -45,9 +45,9 @@ export function CallScriptModal() {
   return (
     <Dialog open={crm.callOpen}>
       <DialogContent
-        showCloseButton={false}
         className="flex h-[92vh] max-h-[92vh] w-[96vw] max-w-[1200px] flex-col gap-0 overflow-hidden p-0 sm:max-w-[1200px]"
       >
+        <DialogTitle className="sr-only">Script de ligação</DialogTitle>
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-panel px-4 py-3">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
