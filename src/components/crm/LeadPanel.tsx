@@ -48,12 +48,13 @@ export function LeadPanel({ operator }: { operator: string }) {
             </div>
           </div>
 
-          <div className="rounded-[var(--radius)] border border-border bg-panel p-4">
+          <div className="shrink-0 rounded-[var(--radius)] border border-border bg-panel p-3">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
               Protocolo de contato — etapa {Math.min(crm.stepIndex + 1, 3)} de 3
             </p>
 
-            <ol className="mt-3 space-y-3">
+            <ol className="mt-2 space-y-2">
+
               {STEPS.map((step, i) => {
                 const done = crm.stepDone[i];
                 const active = i === crm.stepIndex && !done;
@@ -105,13 +106,13 @@ export function LeadPanel({ operator }: { operator: string }) {
               })}
             </ol>
 
-            <div className="mt-4 rounded-[var(--radius)] border border-warning/40 bg-warning/10 p-3 text-sm">
+            <div className="mt-3 rounded-[var(--radius)] border border-warning/40 bg-warning/10 p-2.5 text-xs">
               <span className="font-semibold text-warning">Dica rápida: </span>
               {allDone ? "Etapas concluídas — registre observações e avance para o próximo lead." : current.hint}
             </div>
 
             <Button
-              className="mt-4 w-full"
+              className="mt-3 w-full"
               variant={allDone ? "success" : "secondary"}
               disabled={!allDone || crm.loadingLead}
               onClick={crm.nextLead}
@@ -120,7 +121,8 @@ export function LeadPanel({ operator }: { operator: string }) {
             </Button>
           </div>
 
-          {crm.stepDone[0] && <WhatsappChat className="h-[460px]" />}
+          {crm.stepDone[0] && <WhatsappChat className="min-h-[220px] flex-1" />}
+
         </div>
       )}
 

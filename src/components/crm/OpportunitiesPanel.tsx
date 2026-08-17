@@ -12,12 +12,13 @@ export function OpportunitiesPanel() {
   const crm = useCrm();
 
   return (
-    <aside className="space-y-3 border-border bg-sidebar p-4 lg:border-l">
-      <div className="stat-card">
+    <aside className="flex min-h-0 flex-col gap-2 border-border bg-sidebar p-3 lg:h-full lg:overflow-hidden lg:border-l">
+      <div className="stat-card flex min-h-0 flex-1 flex-col">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           Seus leads prioritários
         </p>
-        <div className="mt-2 max-h-72 overflow-x-auto overflow-y-auto">
+        <div className="mt-2 min-h-16 flex-1 overflow-y-auto">
+
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -43,12 +44,13 @@ export function OpportunitiesPanel() {
             </tbody>
           </table>
         </div>
-        <button className="mt-2 text-xs font-semibold text-primary hover:underline">
+        <button className="mt-2 shrink-0 text-xs font-semibold text-primary hover:underline">
           VER TODOS (38)
         </button>
       </div>
 
-      <div className="stat-card">
+      <div className="stat-card shrink-0">
+
         <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           <Layers className="size-3.5" /> Fila de oportunidades
         </p>
@@ -67,7 +69,7 @@ export function OpportunitiesPanel() {
         </dl>
       </div>
 
-      <div className="stat-card">
+      <div className="stat-card shrink-0">
         <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           <Clock className="size-3.5" /> Timing do próximo lead
         </p>
