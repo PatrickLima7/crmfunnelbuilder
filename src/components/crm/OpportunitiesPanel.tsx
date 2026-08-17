@@ -12,7 +12,7 @@ export function OpportunitiesPanel() {
   const crm = useCrm();
 
   return (
-    <aside className="space-y-3 overflow-y-auto border-border bg-sidebar p-4 lg:h-[calc(100vh-61px)] lg:border-l">
+    <aside className="space-y-3 border-border bg-sidebar p-4 lg:border-l">
       <div className="stat-card">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           Seus leads prioritários
