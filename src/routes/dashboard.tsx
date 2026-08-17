@@ -33,12 +33,15 @@ function Dashboard() {
 
   return (
     <CrmProvider>
-      <Topbar operator={operator} />
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)_300px]">
-        <MetricsSidebar />
-        <LeadPanel operator={operator} />
-        <OpportunitiesPanel />
+      <div className="flex h-screen flex-col overflow-hidden">
+        <Topbar operator={operator} />
+        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-[260px_minmax(0,1fr)_300px] lg:overflow-hidden">
+          <MetricsSidebar />
+          <LeadPanel operator={operator} />
+          <OpportunitiesPanel />
+        </div>
       </div>
     </CrmProvider>
   );
 }
+

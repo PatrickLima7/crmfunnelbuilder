@@ -33,7 +33,7 @@ export function MetricsSidebar() {
   const pct = Math.round(crm.progress * 100);
 
   return (
-    <aside className="space-y-3 border-border bg-sidebar p-4 lg:border-r">
+    <aside className="flex min-h-0 flex-col gap-2 border-border bg-sidebar p-3 lg:h-full lg:overflow-hidden lg:border-r">
       <Metric icon={Target} label="Meta do dia" value={String(crm.goal)} hint="definida pelo admin" />
       <Metric
         icon={Users}
