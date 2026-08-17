@@ -14,19 +14,20 @@ export function LeadPanel({ operator }: { operator: string }) {
   const stepLate = crm.stepSeconds > 300;
 
   return (
-    <section className="min-w-0 space-y-4 p-4">
-      <h1 className="text-xl font-extrabold tracking-tight">
+    <section className="flex min-h-0 min-w-0 flex-col gap-3 p-4 lg:h-full lg:overflow-hidden">
+      <h1 className="shrink-0 truncate text-lg font-extrabold tracking-tight">
         BEM VINDO, <span className="text-primary">{operator}</span>
       </h1>
 
       {crm.loadingLead ? (
-        <div className="flex h-56 flex-col items-center justify-center gap-3 rounded-[var(--radius)] border border-border bg-panel">
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-[var(--radius)] border border-border bg-panel">
           <Loader2 className="size-6 animate-spin text-primary" />
           <p className="text-sm text-muted-foreground">Buscando próximo lead...</p>
         </div>
       ) : (
-        <div key={crm.lead.id} className="animate-lead-in space-y-4">
-          <div className="rounded-[var(--radius)] border border-border bg-panel p-4">
+        <div key={crm.lead.id} className="flex min-h-0 flex-1 animate-lead-in flex-col gap-3">
+          <div className="shrink-0 rounded-[var(--radius)] border border-border bg-panel p-3">
+
             <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
