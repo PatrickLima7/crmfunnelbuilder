@@ -35,31 +35,36 @@ export function MetricsSidebar() {
 
   return (
     <aside className="flex min-h-0 flex-col gap-2 border-border bg-sidebar p-3 lg:h-full lg:overflow-hidden lg:border-r">
-      <Metric icon={Target} label="Meta do dia" value={String(crm.goal)} hint="definida pelo admin" />
-      <Metric
-        icon={Users}
-        label="Contatos realizados"
-        value={String(crm.contacts)}
-        hint={`${pct}% da meta`}
-        tone={crm.goalReached ? "success" : "default"}
-      />
+      <div className="grid shrink-0 grid-cols-2 gap-2">
+        <Metric icon={Target} label="Meta" value={String(crm.goal)} />
+        <Metric
+          icon={Users}
+          label="Contatos"
+          value={String(crm.contacts)}
+          hint={`${pct}% da meta`}
+          tone={crm.goalReached ? "success" : "default"}
+        />
+      </div>
       <div className="h-2 shrink-0 overflow-hidden rounded-full bg-muted">
         <div
           className={`h-full rounded-full transition-all duration-500 ${crm.goalReached ? "bg-success" : pct > 60 ? "bg-primary" : "bg-warning"}`}
           style={{ width: `${pct}%` }}
         />
       </div>
-      <Metric icon={Flame} label="Matrículas / conversões" value={String(crm.conversions)} tone="success" />
-      <Metric icon={Activity} label="Conversas iniciadas" value={String(crm.conversations)} />
-      <Metric icon={TrendingUp} label="Negociações" value={String(crm.negotiations)} />
-      <Metric icon={Activity} label="Ritmo atual" value={`${crm.pace.toFixed(1)}/h`} hint="contatos por hora" tone="warning" />
+      <div className="grid shrink-0 grid-cols-2 gap-2">
+        <Metric icon={Flame} label="Conversões" value={String(crm.conversions)} tone="success" />
+        <Metric icon={Activity} label="Conversas" value={String(crm.conversations)} />
+        <Metric icon={TrendingUp} label="Negociações" value={String(crm.negotiations)} />
+        <Metric icon={Activity} label="Ritmo/h" value={crm.pace.toFixed(1)} tone="warning" />
+      </div>
 
       <div className="shrink-0 rounded-[var(--radius)] border border-success/40 bg-success/10 p-2">
         <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-success">
           <Sparkles className="size-3.5" /> Insight
         </p>
-        <p className="mt-1 text-xs leading-snug">{crm.insight}</p>
+        <p className="mt-0.5 text-xs leading-snug">{crm.insight}</p>
       </div>
+
 
 
       <div className="stat-card flex min-h-0 flex-1 flex-col">
