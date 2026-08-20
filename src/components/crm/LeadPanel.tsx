@@ -121,7 +121,7 @@ export function LeadPanel({ operator }: { operator: string }) {
             </Button>
           </div>
 
-          {crm.stepDone[0] && <WhatsappChat className="min-h-[220px] flex-1" />}
+          {crm.stepDone[0] && <WhatsappChat className="min-h-0 flex-1" />}
 
         </div>
       )}
