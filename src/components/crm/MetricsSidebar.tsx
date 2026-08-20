@@ -18,13 +18,14 @@ function Metric({
   const toneClass =
     tone === "success" ? "text-success" : tone === "warning" ? "text-warning" : "text-foreground";
   return (
-    <div className="stat-card shrink-0 py-2 transition-colors">
-      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-        <Icon className="size-3.5" /> {label}
+    <div className="stat-card min-w-0 shrink-0 px-2 py-1.5 transition-colors">
+      <div className="flex min-w-0 items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <Icon className="size-3 shrink-0" /> <span className="truncate">{label}</span>
       </div>
-      <p className={`font-mono text-xl font-bold ${toneClass}`}>{value}</p>
-      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+      <p className={`font-mono text-lg font-bold leading-tight ${toneClass}`}>{value}</p>
+      {hint && <p className="truncate text-[10px] text-muted-foreground">{hint}</p>}
     </div>
+
 
   );
 }
