@@ -18,13 +18,14 @@ function Metric({
   const toneClass =
     tone === "success" ? "text-success" : tone === "warning" ? "text-warning" : "text-foreground";
   return (
-    <div className="stat-card shrink-0 py-2 transition-colors">
-      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-        <Icon className="size-3.5" /> {label}
+    <div className="stat-card min-w-0 shrink-0 px-2 py-1.5 transition-colors">
+      <div className="flex min-w-0 items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <Icon className="size-3 shrink-0" /> <span className="truncate">{label}</span>
       </div>
-      <p className={`font-mono text-xl font-bold ${toneClass}`}>{value}</p>
-      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+      <p className={`font-mono text-lg font-bold leading-tight ${toneClass}`}>{value}</p>
+      {hint && <p className="truncate text-[10px] text-muted-foreground">{hint}</p>}
     </div>
+
 
   );
 }
@@ -35,31 +36,36 @@ export function MetricsSidebar() {
 
   return (
     <aside className="flex min-h-0 flex-col gap-2 border-border bg-sidebar p-3 lg:h-full lg:overflow-hidden lg:border-r">
-      <Metric icon={Target} label="Meta do dia" value={String(crm.goal)} hint="definida pelo admin" />
-      <Metric
-        icon={Users}
-        label="Contatos realizados"
-        value={String(crm.contacts)}
-        hint={`${pct}% da meta`}
-        tone={crm.goalReached ? "success" : "default"}
-      />
+      <div className="grid shrink-0 grid-cols-2 gap-2">
+        <Metric icon={Target} label="Meta" value={String(crm.goal)} />
+        <Metric
+          icon={Users}
+          label="Contatos"
+          value={String(crm.contacts)}
+          hint={`${pct}% da meta`}
+          tone={crm.goalReached ? "success" : "default"}
+        />
+      </div>
       <div className="h-2 shrink-0 overflow-hidden rounded-full bg-muted">
         <div
           className={`h-full rounded-full transition-all duration-500 ${crm.goalReached ? "bg-success" : pct > 60 ? "bg-primary" : "bg-warning"}`}
           style={{ width: `${pct}%` }}
         />
       </div>
-      <Metric icon={Flame} label="Matrículas / conversões" value={String(crm.conversions)} tone="success" />
-      <Metric icon={Activity} label="Conversas iniciadas" value={String(crm.conversations)} />
-      <Metric icon={TrendingUp} label="Negociações" value={String(crm.negotiations)} />
-      <Metric icon={Activity} label="Ritmo atual" value={`${crm.pace.toFixed(1)}/h`} hint="contatos por hora" tone="warning" />
+      <div className="grid shrink-0 grid-cols-2 gap-2">
+        <Metric icon={Flame} label="Conversões" value={String(crm.conversions)} tone="success" />
+        <Metric icon={Activity} label="Conversas" value={String(crm.conversations)} />
+        <Metric icon={TrendingUp} label="Negociações" value={String(crm.negotiations)} />
+        <Metric icon={Activity} label="Ritmo/h" value={crm.pace.toFixed(1)} tone="warning" />
+      </div>
 
       <div className="shrink-0 rounded-[var(--radius)] border border-success/40 bg-success/10 p-2">
         <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-success">
           <Sparkles className="size-3.5" /> Insight
         </p>
-        <p className="mt-1 text-xs leading-snug">{crm.insight}</p>
+        <p className="mt-0.5 text-xs leading-snug">{crm.insight}</p>
       </div>
+
 
 
       <div className="stat-card flex min-h-0 flex-1 flex-col">
