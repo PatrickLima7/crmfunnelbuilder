@@ -5,9 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { readCurrent, saveSession } from "@/lib/crm-store";
+import { supabase } from "@/lib/supabase";
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute("/")(({
   head: () => ({
     meta: [
       { title: "Login — Funil de Vendas CRM" },
@@ -17,36 +17,85 @@ export const Route = createFileRoute("/")({
     ],
   }),
   component: LoginPage,
-});
+}));
 
 function LoginPage() {
   const navigate = useNavigate();
-  const [login, setLogin] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
 
+  // Redirect if already logged in
   useEffect(() => {
-    if (readCurrent()) navigate({ to: "/dashboard" });
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", session.user.id)
+          .single();
+        if (profile?.role === "admin") {
+          navigate({ to: "/admin" });
+        } else {
+          navigate({ to: "/dashboard" });
+        }
+      } else {
+        setCheckingSession(false);
+      }
+    });
   }, [navigate]);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    const value = login.trim();
-    if (!value) return setError("Informe seu e-mail ou CPF.");
-    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-    const isCpf = /^\d{11}$/.test(value.replace(/\D/g, ""));
-    if (!isEmail && !isCpf) return setError("Use um e-mail válido ou um CPF com 11 dígitos.");
+    const value = email.trim();
+    if (!value) return setError("Informe seu e-mail.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return setError("Use um e-mail válido.");
     if (password.length < 4) return setError("A senha deve ter pelo menos 4 caracteres.");
+
     setLoading(true);
-    window.setTimeout(() => {
-      const name = isEmail ? value.split("@")[0]!.replace(/[._]/g, " ") : "Operador";
-      saveSession({ name: name.toUpperCase(), login: value }, remember);
-      navigate({ to: "/dashboard" });
-    }, 500);
+
+    const { data, error: authError } = await supabase.auth.signInWithPassword({
+      email: value,
+      password,
+    });
+
+    if (authError) {
+      setLoading(false);
+      if (authError.message.includes("Invalid login credentials")) {
+        return setError("E-mail ou senha incorretos.");
+      }
+      return setError(authError.message);
+    }
+
+    if (data.user) {
+      // Fetch profile to determine redirect
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", data.user.id)
+        .single();
+
+      if (profile?.role === "admin") {
+        navigate({ to: "/admin" });
+      } else {
+        navigate({ to: "/dashboard" });
+      }
+    }
+
+    setLoading(false);
   };
+
+  if (checkingSession) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="size-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <main className="grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
@@ -83,20 +132,21 @@ function LoginPage() {
       <section className="flex items-center justify-center p-6">
         <form onSubmit={submit} className="w-full max-w-sm space-y-5">
           <div>
-            <h2 className="text-2xl font-bold">Acesso do operador</h2>
+            <h2 className="text-2xl font-bold">Acesso ao painel</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Entre com seu e-mail corporativo ou CPF.
+              Entre com seu e-mail corporativo.
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="login">E-mail ou CPF</Label>
+            <Label htmlFor="login">E-mail</Label>
             <div className="relative">
               <User className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 id="login"
-                value={login}
-                onChange={(e) => setLogin(e.target.value)}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 placeholder="voce@empresa.com"
                 className="pl-9"
                 autoComplete="username"
@@ -134,9 +184,6 @@ function LoginPage() {
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Entrando..." : "Entrar no painel"}
           </Button>
-          <p className="text-center text-xs text-muted-foreground">
-            Demonstração: qualquer e-mail válido e senha com 4+ caracteres.
-          </p>
         </form>
       </section>
     </main>

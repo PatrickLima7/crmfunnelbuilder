@@ -1,63 +1,32 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { generateLead, insightFor, STEPS, type Lead, type StepKey } from "./crm-data";
-import { CLIENT_REPLIES, type CallOutcome } from "./call-script";
+import { type CallOutcome } from "./call-script";
+import { supabase } from "./supabase";
 
-const AUTH_KEY = "crm.session";
-
-export interface Session {
-  name: string;
-  login: string;
-}
-
-export function getSession(): Session | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(AUTH_KEY);
-    return raw ? (JSON.parse(raw) as Session) : null;
-  } catch {
-    return null;
-  }
-}
-
-export function saveSession(session: Session, remember: boolean) {
-  if (remember) window.localStorage.setItem(AUTH_KEY, JSON.stringify(session));
-  else window.sessionStorage.setItem(AUTH_KEY, JSON.stringify(session));
-  window.localStorage.setItem("crm.current", JSON.stringify(session));
-}
-
-export function clearSession() {
-  window.localStorage.removeItem(AUTH_KEY);
-  window.localStorage.removeItem("crm.current");
-  window.sessionStorage.removeItem(AUTH_KEY);
-}
-
-export function readCurrent(): Session | null {
-  if (typeof window === "undefined") return null;
-  const raw =
-    window.localStorage.getItem("crm.current") ?? window.sessionStorage.getItem(AUTH_KEY);
-  try {
-    return raw ? (JSON.parse(raw) as Session) : null;
-  } catch {
-    return null;
-  }
+// ─── Supabase presence helper ────────────────────────────────────────────────
+async function pushPresence(
+  operatorId: string,
+  patch: {
+    state?: string;
+    pause_reason?: string | null;
+    current_lead?: string | null;
+    contacts_today?: number;
+    conversions_today?: number;
+    talk_seconds?: number;
+    pause_seconds?: number;
+  },
+) {
+  await supabase
+    .from("operator_presence")
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq("operator_id", operatorId);
 }
 
 export interface ProgressPoint {
   label: string;
   contatos: number;
   meta: number;
-}
-
-export type MessageStatus = "sent" | "delivered" | "read";
-
-export interface ChatMessage {
-  id: string;
-  from: "operator" | "client";
-  text: string;
-  at: number;
-  status: MessageStatus;
-  attachment?: { name: string; kind: "image" | "file" };
 }
 
 const DAILY_GOAL = 80;
@@ -85,27 +54,6 @@ function beep() {
   }
 }
 
-function seedMessages(name: string): ChatMessage[] {
-  const base = Date.now() - 3600 * 1000;
-  return [
-    {
-      id: "m1",
-      from: "operator",
-      text: `Olá ${name.split(" ")[0]}, aqui é da equipe comercial. Tudo bem?`,
-      at: base,
-      status: "read",
-    },
-    { id: "m2", from: "client", text: "Oi, tudo sim!", at: base + 240000, status: "read" },
-    {
-      id: "m3",
-      from: "operator",
-      text: "Vi que você demonstrou interesse nos nossos serviços. Posso te ligar rapidinho?",
-      at: base + 300000,
-      status: "read",
-    },
-  ];
-}
-
 interface CrmValue {
   goal: number;
   contacts: number;
@@ -116,58 +64,61 @@ interface CrmValue {
   insight: string;
   progress: number;
   history: ProgressPoint[];
-  lead: Lead;
+  lead: Lead & { realId?: string; callback_at?: string | null };
   loadingLead: boolean;
   stepIndex: number;
   stepDone: boolean[];
   stepSeconds: number;
   nextLeadIn: number;
   alerts: string[];
-  pause: { reason: string; startedAt: number } | null;
-  startPause: (reason: string) => void;
-  endPause: () => void;
+  pause: { reason: string; startedAt: number; eventId?: string } | null;
+  startPause: (reason: string) => Promise<void>;
+  endPause: () => Promise<void>;
   answered: () => void;
-  notAnswered: () => void;
-  sendWhatsappCall: () => void;
-  sendWhatsappMessage: () => void;
+  notAnswered: () => Promise<void>;
   nextLead: () => void;
+  selectLead: (targetLead: { id?: string; name: string; phone?: string | null; profession?: string; status?: string; temperature?: string }) => void;
   registerLead: (name: string, phone: string) => void;
   goalReached: boolean;
   // Ligação em andamento
   callOpen: boolean;
   callSeconds: number;
-  finishCall: (outcome: CallOutcome) => void;
-  // Chat WhatsApp
-  messages: ChatMessage[];
-  clientTyping: boolean;
-  unread: number;
-  muted: boolean;
-  toggleMute: () => void;
-  markChatRead: () => void;
-  sendMessage: (text: string, attachment?: ChatMessage["attachment"]) => void;
+  finishCall: (outcome: CallOutcome, customCallbackDays?: number) => Promise<void>;
 }
 
 const CrmContext = createContext<CrmValue | null>(null);
 
-export function CrmProvider({ children }: { children: ReactNode }) {
+export function CrmProvider({ children, operatorId }: { children: ReactNode; operatorId: string }) {
   const [contacts, setContacts] = useState(42);
   const [conversions, setConversions] = useState(6);
   const [conversations, setConversations] = useState(19);
   const [negotiations, setNegotiations] = useState(8);
-  const [lead, setLead] = useState<Lead>(() => generateLead());
+  const [lead, setLead] = useState<Lead & { realId?: string; callback_at?: string | null }>(() => generateLead());
   const [loadingLead, setLoadingLead] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
-  const [stepDone, setStepDone] = useState([false, false, false]);
+  const [stepDone, setStepDone] = useState([false]); // Apenas 1 etapa: Ligação
   const [stepStart, setStepStart] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
-  const [pause, setPause] = useState<{ reason: string; startedAt: number } | null>(null);
+  const [pause, setPause] = useState<{ reason: string; startedAt: number; eventId?: string } | null>(null);
   const [alerts, setAlerts] = useState<string[]>([]);
+  const sessionIdRef = useRef<string | null>(null);
+  const talkSecondsRef = useRef(0);
+  const pauseSecondsRef = useRef(0);
+
+  // Load today's session id
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    supabase
+      .from("work_sessions")
+      .select("id")
+      .eq("operator_id", operatorId)
+      .eq("date", today)
+      .single()
+      .then(({ data }) => { if (data) sessionIdRef.current = data.id; });
+  }, [operatorId]);
+
   const [callOpen, setCallOpen] = useState(false);
   const [callStart, setCallStart] = useState<number | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>(() => seedMessages(lead.name));
-  const [clientTyping, setClientTyping] = useState(false);
-  const [unread, setUnread] = useState(0);
-  const [muted, setMuted] = useState(false);
   const [history, setHistory] = useState<ProgressPoint[]>(() =>
     Array.from({ length: 6 }, (_, i) => ({
       label: `${8 + i}h`,
@@ -179,8 +130,6 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   const completedAt = useRef<number | null>(null);
   const firedAlerts = useRef<Record<string, boolean>>({});
   const goalCelebrated = useRef(false);
-  const mutedRef = useRef(false);
-  mutedRef.current = muted;
 
   useEffect(() => {
     const t = window.setInterval(() => setNow(Date.now()), 1000);
@@ -189,6 +138,13 @@ export function CrmProvider({ children }: { children: ReactNode }) {
 
   const stepSeconds = pause ? 0 : Math.floor((now - stepStart) / 1000);
   const callSeconds = callStart ? Math.floor((now - callStart) / 1000) : 0;
+
+  // Keep refs in sync so async handlers have fresh values
+  useEffect(() => { talkSecondsRef.current = callSeconds; }, [callSeconds]);
+  useEffect(() => {
+    if (pause) pauseSecondsRef.current = Math.floor((Date.now() - pause.startedAt) / 1000);
+  }, [now, pause]);
+
   const allDone = stepDone.every(Boolean);
   const workedHours = Math.max(0.5, (now - shiftStart.current) / 3600000);
   const pace = Math.round((contacts / workedHours) * 10) / 10;
@@ -200,7 +156,7 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     if (firedAlerts.current[key]) return;
     firedAlerts.current[key] = true;
     setAlerts((a) => [...new Set([...a, message])]);
-    if (!mutedRef.current) beep();
+    beep();
     toast.warning(message, { duration: 6000 });
   };
 
@@ -208,10 +164,10 @@ export function CrmProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (pause) return;
     if (stepSeconds > STEP_ALERT_SECONDS) {
-      pushAlert(`step-${lead.id}-${stepIndex}`, `Você está há mais de 5 min em "${STEPS[stepIndex]!.label}".`);
+      pushAlert(`step-${lead.id}-${stepIndex}`, `Você está há mais de 5 min na ligação.`);
     }
     if (allDone && completedAt.current && (now - completedAt.current) / 1000 > IDLE_ALERT_SECONDS) {
-      pushAlert(`idle-${lead.id}`, "Etapas concluídas há mais de 2 min — avance para o próximo lead.");
+      pushAlert(`idle-${lead.id}`, "Ligação concluída — avance para o próximo lead.");
     }
     const expected = Math.round(workedHours * (DAILY_GOAL / 8));
     if (contacts < expected - 2) {
@@ -240,47 +196,8 @@ export function CrmProvider({ children }: { children: ReactNode }) {
 
   const advance = (key: StepKey) => {
     const index = STEPS.findIndex((s) => s.key === key);
-    setStepDone((d) => d.map((v, i) => (i === index ? true : v)));
-    const next = index + 1;
-    if (next < STEPS.length) {
-      setStepIndex(next);
-      setStepStart(Date.now());
-    } else {
-      completedAt.current = Date.now();
-    }
-  };
-
-  const pushMessage = (msg: ChatMessage) => setMessages((m) => [...m, msg]);
-
-  const simulateClientReply = () => {
-    window.setTimeout(() => setClientTyping(true), 1200);
-    window.setTimeout(() => {
-      setClientTyping(false);
-      pushMessage({
-        id: `c-${Date.now()}`,
-        from: "client",
-        text: CLIENT_REPLIES[Math.floor(Math.random() * CLIENT_REPLIES.length)]!,
-        at: Date.now(),
-        status: "read",
-      });
-      setUnread((u) => u + 1);
-      if (!mutedRef.current) beep();
-      toast.success("Cliente respondeu no WhatsApp 💬");
-    }, 3800);
-  };
-
-  const sendMessage: CrmValue["sendMessage"] = (text, attachment) => {
-    const id = `o-${Date.now()}`;
-    pushMessage({ id, from: "operator", text, at: Date.now(), status: "sent", ...(attachment ? { attachment } : {}) });
-    window.setTimeout(
-      () => setMessages((m) => m.map((x) => (x.id === id ? { ...x, status: "delivered" } : x))),
-      800,
-    );
-    window.setTimeout(
-      () => setMessages((m) => m.map((x) => (x.id === id ? { ...x, status: "read" } : x))),
-      2200,
-    );
-    if (Math.random() > 0.35) simulateClientReply();
+    setStepDone((d) => d.map((v, i) => (i === (index >= 0 ? index : 0) ? true : v)));
+    completedAt.current = Date.now();
   };
 
   const value: CrmValue = {
@@ -304,54 +221,153 @@ export function CrmProvider({ children }: { children: ReactNode }) {
     goalReached: progress >= 1,
     callOpen,
     callSeconds,
-    messages,
-    clientTyping,
-    unread,
-    muted,
-    toggleMute: () => setMuted((m) => !m),
-    markChatRead: () => setUnread(0),
-    sendMessage,
-    startPause: (reason) => {
-      setPause({ reason, startedAt: Date.now() });
+    startPause: async (reason) => {
+      const nowTime = Date.now();
+      setPause({ reason, startedAt: nowTime });
       toast.info(`Pausa iniciada: ${reason}`);
+      const { data } = await supabase.from("pause_events").insert({
+        operator_id: operatorId,
+        session_id: sessionIdRef.current,
+        reason,
+        started_at: new Date(nowTime).toISOString(),
+      }).select("id").single();
+      setPause({ reason, startedAt: nowTime, eventId: data?.id });
+      await pushPresence(operatorId, { state: "pausa", pause_reason: reason });
     },
-    endPause: () => {
+    endPause: async () => {
+      const ended = new Date().toISOString();
+      const eventId = pause?.eventId;
       setPause(null);
       setStepStart(Date.now());
       toast.success("Pausa encerrada, bom trabalho!");
+      if (eventId) {
+        await supabase.from("pause_events").update({ ended_at: ended }).eq("id", eventId);
+      }
+      await pushPresence(operatorId, { state: "ocioso", pause_reason: null, pause_seconds: pauseSecondsRef.current });
     },
     answered: () => {
       setConversations((c) => c + 1);
       setNegotiations((n) => n + 1);
       setCallStart(Date.now());
       setCallOpen(true);
+      void pushPresence(operatorId, { state: "ligacao", current_lead: lead.name });
     },
-    finishCall: (outcome) => {
+    finishCall: async (outcome, customCallbackDays) => {
+      const ended = new Date().toISOString();
       setCallOpen(false);
       setCallStart(null);
       advance("call");
+      const newContacts = contacts + 1;
+      let newConversions = conversions;
+
+      // Calculate callback date if outcome requires return or customCallbackDays specified
+      let callbackDays = customCallbackDays;
+      if (callbackDays === undefined) {
+        if (outcome === "pensar") callbackDays = 3; // Default 3 days for "vai pensar"
+        else if (outcome === "revisao") callbackDays = 1;
+      }
+
+      let callbackDateIso: string | null = null;
+      if (callbackDays && callbackDays > 0) {
+        const d = new Date();
+        d.setDate(d.getDate() + callbackDays);
+        callbackDateIso = d.toISOString();
+      }
+
       if (outcome === "interessado") {
-        setConversions((c) => c + 1);
-        toast.success("Cliente interessado — siga para o WhatsApp.");
+        setConversions((c) => { newConversions = c + 1; return c + 1; });
+        toast.success("Cliente interessado!");
       } else if (outcome === "pensar") {
-        toast.info("Retorno agendado automaticamente para amanhã.");
+        toast.info(`Retorno agendado para daqui a ${callbackDays ?? 3} dias.`);
       } else if (outcome === "nao") {
         toast("Lead classificado como inativo.");
       } else {
         toast.warning("Contato marcado para revisão.");
       }
+
+      // If lead has a real DB ID, update lead status & callback_at
+      if (lead.realId) {
+        const newStatus = outcome === "interessado" ? "converted" : outcome === "nao" ? "inactive" : "contacted";
+        await supabase
+          .from("leads")
+          .update({
+            status: newStatus,
+            callback_at: callbackDateIso,
+            updated_at: ended,
+          })
+          .eq("id", lead.realId);
+      }
+
+      await supabase.from("contact_events").insert({
+        operator_id: operatorId,
+        session_id: sessionIdRef.current,
+        lead_name: lead.name,
+        lead_phone: lead.phone,
+        contact_type: "call",
+        outcome: outcome as string,
+        started_at: callStart ? new Date(callStart).toISOString() : new Date().toISOString(),
+        ended_at: ended,
+      });
+
+      await pushPresence(operatorId, {
+        state: "ocioso",
+        contacts_today: newContacts,
+        conversions_today: newConversions,
+        talk_seconds: talkSecondsRef.current,
+      });
     },
-    notAnswered: () => {
-      toast("Sem atendimento — siga para a chamada de WhatsApp.");
+    notAnswered: async () => {
+      // Auto schedule return for tomorrow when lead doesn't answer
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const callbackDateIso = tomorrow.toISOString();
+
+      toast("Sem atendimento. Retorno agendado para amanhã!");
       advance("call");
+
+      if (lead.realId) {
+        await supabase
+          .from("leads")
+          .update({
+            status: "contacted",
+            callback_at: callbackDateIso,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", lead.realId);
+      }
+
+      await supabase.from("contact_events").insert({
+        operator_id: operatorId,
+        session_id: sessionIdRef.current,
+        lead_name: lead.name,
+        lead_phone: lead.phone,
+        contact_type: "call",
+        outcome: "sem_resposta",
+        started_at: new Date().toISOString(),
+      });
+      await pushPresence(operatorId, { state: "ocioso", contacts_today: contacts + 1 });
     },
-    sendWhatsappCall: () => {
-      advance("whatsapp_call");
-      toast.success("Chamada de WhatsApp registrada.");
-    },
-    sendWhatsappMessage: () => {
-      advance("whatsapp_msg");
-      toast.success("Mensagem enviada — etapas concluídas!");
+    selectLead: (target) => {
+      setLoadingLead(true);
+      window.setTimeout(() => {
+        setLead({
+          id: target.id ? `lead-${target.id}` : `lead-${Date.now()}`,
+          realId: target.id,
+          name: target.name,
+          phone: target.phone ?? "(11) 99999-9999",
+          profession: target.profession ?? "Cliente cadastrado",
+          isNew: false,
+          status: (target.temperature ?? target.status ?? "morno") as import("./crm-data").LeadStatus,
+          returnTime: "10:00",
+        });
+        setStepIndex(0);
+        setStepDone([false]);
+        setStepStart(Date.now());
+        completedAt.current = null;
+        setAlerts([]);
+        setLoadingLead(false);
+        toast.success(`Atendendo cliente: ${target.name}`);
+      }, 300);
     },
     nextLead: () => {
       setLoadingLead(true);
@@ -365,11 +381,8 @@ export function CrmProvider({ children }: { children: ReactNode }) {
         ]);
         const fresh = generateLead();
         setLead(fresh);
-        setMessages(seedMessages(fresh.name));
-        setUnread(0);
-        setClientTyping(false);
         setStepIndex(0);
-        setStepDone([false, false, false]);
+        setStepDone([false]);
         setStepStart(Date.now());
         completedAt.current = null;
         setAlerts([]);

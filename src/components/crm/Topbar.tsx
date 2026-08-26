@@ -22,11 +22,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PAUSE_REASONS, formatClock } from "@/lib/crm-data";
-import { clearSession, useCrm } from "@/lib/crm-store";
+import { useCrm } from "@/lib/crm-store";
+import { supabase } from "@/lib/supabase";
+import { usePauseTypes } from "@/hooks/usePauseTypes";
 
 export function Topbar({ operator }: { operator: string }) {
   const crm = useCrm();
   const navigate = useNavigate();
+  const { data: pauseTypes = [...PAUSE_REASONS] } = usePauseTypes();
   const [clock, setClock] = useState("--:--:--");
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -118,7 +121,7 @@ export function Topbar({ operator }: { operator: string }) {
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>Selecionar pausa</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {PAUSE_REASONS.map((r) => (
+            {pauseTypes.map((r) => (
               <DropdownMenuItem key={r} onSelect={() => crm.startPause(r)}>
                 {r}
               </DropdownMenuItem>
@@ -129,8 +132,8 @@ export function Topbar({ operator }: { operator: string }) {
         <Button
           variant="destructive"
           size="sm"
-          onClick={() => {
-            clearSession();
+          onClick={async () => {
+            await supabase.auth.signOut();
             navigate({ to: "/", replace: true });
           }}
         >

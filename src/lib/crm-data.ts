@@ -22,18 +22,8 @@ export const PAUSE_REASONS = [
 export const STEPS = [
   {
     key: "call",
-    label: "Ligação normal",
-    hint: "Apresente-se, confirme o interesse e pergunte o melhor horário para conversar.",
-  },
-  {
-    key: "whatsapp_call",
-    label: "Ligação WhatsApp",
-    hint: "Se não atendeu no telefone, tente a chamada de voz do WhatsApp — costuma converter mais.",
-  },
-  {
-    key: "whatsapp_msg",
-    label: "Mensagem WhatsApp",
-    hint: "Envie uma mensagem curta com seu nome, a empresa e uma pergunta aberta.",
+    label: "Ligação telefônica",
+    hint: "Apresente-se, confirme o interesse e use o script como guia.",
   },
 ] as const;
 
