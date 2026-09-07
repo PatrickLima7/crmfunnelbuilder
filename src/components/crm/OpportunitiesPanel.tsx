@@ -108,9 +108,6 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
           Meus clientes
         </p>
         <div className="flex gap-1">
-          <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={() => setOpenImport(true)}>
-            <FileUp className="size-3.5" /> CSV
-          </Button>
           <Dialog open={openForm} onOpenChange={setOpenForm}>
             <DialogTrigger asChild>
               <Button size="sm" className="h-7 gap-1 px-2 text-xs">
@@ -221,8 +218,6 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
           </span>
         </div>
       </div>
-
-      <LeadImportModal open={openImport} onClose={() => setOpenImport(false)} operatorId={operatorId} />
     </aside>
   );
 }

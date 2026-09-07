@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   BarChart3,
   Coffee,
+  FileUp,
   GripVertical,
   LogOut,
   Phone,
@@ -30,6 +31,7 @@ import { useOperatorsRealtime } from "@/hooks/useOperators";
 import { VendedoresTab } from "@/components/admin/VendedoresTab";
 import { RelatoriosTab } from "@/components/admin/RelatoriosTab";
 import { ConfiguracaoTab } from "@/components/admin/ConfiguracaoTab";
+import { LeadsTab } from "@/components/admin/LeadsTab";
 import type { ScriptStepRow } from "@/lib/supabase-types";
 
 export const Route = createFileRoute("/admin")({
@@ -206,6 +208,9 @@ function AdminPage() {
         <Tabs defaultValue="monitor">
           <TabsList className="flex-wrap">
             <TabsTrigger value="monitor">Monitoramento</TabsTrigger>
+            <TabsTrigger value="leads">
+              <FileUp className="size-3.5" /> Leads & Importação
+            </TabsTrigger>
             <TabsTrigger value="metas">Metas</TabsTrigger>
             <TabsTrigger value="script">Script</TabsTrigger>
             <TabsTrigger value="vendedores">
@@ -218,6 +223,11 @@ function AdminPage() {
               <Settings className="size-3.5" /> Config.
             </TabsTrigger>
           </TabsList>
+
+          {/* ── LEADS & IMPORTAÇÃO ── */}
+          <TabsContent value="leads" className="mt-4">
+            <LeadsTab />
+          </TabsContent>
 
           {/* ── MONITORAMENTO ── */}
           <TabsContent value="monitor" className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">

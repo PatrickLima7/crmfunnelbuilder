@@ -39,6 +39,13 @@ export function CallScriptModal() {
   const [asking, setAsking] = useState(false);
   const [outcome, setOutcome] = useState<CallOutcome | null>(null);
   const [callbackDays, setCallbackDays] = useState<number>(3);
+  const [returnDate, setReturnDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split("T")[0]!;
+  });
+  const [returnTime, setReturnTime] = useState<string>("10:00");
+  const [retornoError, setRetornoError] = useState<string | null>(null);
 
   const safeIndex = Math.min(index, Math.max(0, steps.length - 1));
   const step = steps[safeIndex] ?? FALLBACK_STEPS[0]!;
@@ -52,10 +59,45 @@ export function CallScriptModal() {
     setAsking(false);
     setOutcome(null);
     setCallbackDays(3);
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    setReturnDate(d.toISOString().split("T")[0]!);
+    setReturnTime("10:00");
+    setRetornoError(null);
   };
 
-  const handleFinish = async (chosenOutcome: CallOutcome) => {
-    await crm.finishCall(chosenOutcome, chosenOutcome === "pensar" || chosenOutcome === "revisao" ? callbackDays : undefined);
+  const validateAndFinish = async () => {
+    if (!outcome) return;
+
+    if (outcome === "retorno") {
+      if (!returnDate || !returnTime) {
+        setRetornoError("Por favor, selecione data e hora de retorno.");
+        return;
+      }
+      const selected = new Date(`${returnDate}T${returnTime}`);
+      const maxAllowed = new Date();
+      maxAllowed.setDate(maxAllowed.getDate() + 7);
+
+      if (selected < new Date()) {
+        setRetornoError("A data/hora de retorno deve ser no futuro.");
+        return;
+      }
+
+      if (selected > maxAllowed) {
+        setRetornoError("A data de retorno não pode ultrapassar 7 dias corridos.");
+        return;
+      }
+
+      setRetornoError(null);
+      await crm.finishCall("retorno", selected.toISOString());
+      reset();
+      return;
+    }
+
+    await crm.finishCall(
+      outcome,
+      outcome === "pensar" || outcome === "revisao" ? callbackDays.toString() : undefined
+    );
     reset();
   };
 
@@ -230,6 +272,35 @@ export function CallScriptModal() {
                 ))}
               </div>
 
+              {outcome === "retorno" && (
+                <div className="space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
+                  <p className="text-xs font-bold text-primary">📅 Definir data e hora do retorno (máximo 7 dias):</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-semibold text-muted-foreground uppercase">Data</label>
+                      <input
+                        type="date"
+                        value={returnDate}
+                        onChange={(e) => { setReturnDate(e.target.value); setRetornoError(null); }}
+                        className="mt-1 w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-foreground"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-muted-foreground uppercase">Hora</label>
+                      <input
+                        type="time"
+                        value={returnTime}
+                        onChange={(e) => { setReturnTime(e.target.value); setRetornoError(null); }}
+                        className="mt-1 w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-foreground"
+                      />
+                    </div>
+                  </div>
+                  {retornoError && (
+                    <p className="text-xs font-bold text-destructive">{retornoError}</p>
+                  )}
+                </div>
+              )}
+
               {(outcome === "pensar" || outcome === "revisao") && (
                 <div className="space-y-1.5 rounded-xl border border-warning/30 bg-warning/10 p-3">
                   <label className="block text-xs font-bold text-warning-foreground">
@@ -260,7 +331,7 @@ export function CallScriptModal() {
                   variant="destructive"
                   className="flex-1"
                   disabled={!outcome}
-                  onClick={() => handleFinish(outcome!)}
+                  onClick={() => void validateAndFinish()}
                 >
                   Encerrar ligação
                 </Button>

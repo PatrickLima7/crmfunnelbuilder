@@ -65,19 +65,61 @@ export const SCRIPT_STEPS: ScriptStep[] = [
 ];
 
 export const CALL_OUTCOMES = [
-  { key: "interessado", label: "Cliente interessado", hint: "Avança para a etapa de WhatsApp" },
-  { key: "pensar", label: "Precisa pensar", hint: "Agenda retorno automático" },
-  { key: "nao", label: "Não interessado", hint: "Classifica o lead como inativo" },
-  { key: "errado", label: "Contato errado", hint: "Marca o lead para revisão" },
+  {
+    key: "interessado",
+    label: "✅ Cliente interessado",
+    hint: "Lead classificado como Quente",
+    temperature: "quente" as const,
+  },
+  {
+    key: "pensar",
+    label: "🤔 Precisa pensar",
+    hint: "Lead classificado como Morno — agendar retorno",
+    temperature: "morno" as const,
+  },
+  {
+    key: "retorno",
+    label: "📅 Agendar retorno",
+    hint: "Escolha data e hora — máximo 7 dias",
+    temperature: "morno" as const,
+  },
+  {
+    key: "sem_resposta",
+    label: "📵 Não atendeu",
+    hint: "Lead classificado como Frio — retorno automático amanhã",
+    temperature: "frio" as const,
+  },
+  {
+    key: "nao",
+    label: "❌ Não tem interesse",
+    hint: "Lead classificado como Frio — inativo",
+    temperature: "frio" as const,
+  },
+  {
+    key: "errado",
+    label: "⚠️ Contato errado",
+    hint: "Número incorreto — lead para revisão",
+    temperature: "frio" as const,
+  },
 ] as const;
 
 export type CallOutcome = (typeof CALL_OUTCOMES)[number]["key"];
 
+// Temperature mapping for each outcome
+export const OUTCOME_TEMPERATURE: Record<CallOutcome, "quente" | "morno" | "frio"> = {
+  interessado:  "quente",
+  pensar:       "morno",
+  retorno:      "morno",
+  sem_resposta: "frio",
+  nao:          "frio",
+  errado:       "frio",
+};
+
 export const QUICK_MESSAGES = [
-  { key: "demo", label: "Agendar demo", text: "Segue o link para agendar sua demo: agenda.empresa.com/demo 📅" },
-  { key: "proposta", label: "Enviar proposta", text: "Enviei sua proposta em PDF: empresa.com/proposta.pdf 📄" },
-  { key: "presenca", label: "Confirmar presença", text: "Consegue confirmar sua presença na reunião? ✅" },
-  { key: "retorno", label: "Agendar retorno", text: "Posso te ligar amanhã às 10h ou às 15h? ⏰" },
+  { key: "demo",      label: "Agendar demo",       text: "Segue o link para agendar sua demo: agenda.empresa.com/demo 📅" },
+  { key: "proposta",  label: "Enviar proposta",     text: "Enviei sua proposta em PDF: empresa.com/proposta.pdf 📄" },
+  { key: "presenca",  label: "Confirmar presença",  text: "Consegue confirmar sua presença na reunião? ✅" },
+  { key: "retorno",   label: "Agendar retorno",     text: "Posso te ligar amanhã às 10h ou às 15h? ⏰" },
 ] as const;
 
 export const CLIENT_REPLIES = [

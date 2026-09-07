@@ -1,10 +1,12 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { generateLead, insightFor, STEPS, type Lead, type StepKey } from "./crm-data";
-import { type CallOutcome } from "./call-script";
+import { type CallOutcome, OUTCOME_TEMPERATURE } from "./call-script";
 import { supabase } from "./supabase";
+import { LEADS_QUERY_KEY } from "@/hooks/useLeads";
 
-// ─── Supabase presence helper ────────────────────────────────────────────────
+// ─── Supabase presence helper ─────────────────────────────────────────────────
 async function pushPresence(
   operatorId: string,
   patch: {
@@ -29,7 +31,7 @@ export interface ProgressPoint {
   meta: number;
 }
 
-const DAILY_GOAL = 80;
+const DEFAULT_DAILY_GOAL = 80;
 const STEP_ALERT_SECONDS = 300;
 const IDLE_ALERT_SECONDS = 120;
 const LONG_CALL_SECONDS = 600;
@@ -80,23 +82,24 @@ interface CrmValue {
   selectLead: (targetLead: { id?: string; name: string; phone?: string | null; profession?: string; status?: string; temperature?: string }) => void;
   registerLead: (name: string, phone: string) => void;
   goalReached: boolean;
-  // Ligação em andamento
   callOpen: boolean;
   callSeconds: number;
-  finishCall: (outcome: CallOutcome, customCallbackDays?: number) => Promise<void>;
+  finishCall: (outcome: CallOutcome, callbackAt?: string) => Promise<void>;
 }
 
 const CrmContext = createContext<CrmValue | null>(null);
 
 export function CrmProvider({ children, operatorId }: { children: ReactNode; operatorId: string }) {
-  const [contacts, setContacts] = useState(42);
-  const [conversions, setConversions] = useState(6);
-  const [conversations, setConversations] = useState(19);
-  const [negotiations, setNegotiations] = useState(8);
+  const qc = useQueryClient();
+  const [dailyGoal, setDailyGoal] = useState(DEFAULT_DAILY_GOAL);
+  const [contacts, setContacts] = useState(0);
+  const [conversions, setConversions] = useState(0);
+  const [conversations, setConversations] = useState(0);
+  const [negotiations, setNegotiations] = useState(0);
   const [lead, setLead] = useState<Lead & { realId?: string; callback_at?: string | null }>(() => generateLead());
   const [loadingLead, setLoadingLead] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
-  const [stepDone, setStepDone] = useState([false]); // Apenas 1 etapa: Ligação
+  const [stepDone, setStepDone] = useState([false]);
   const [stepStart, setStepStart] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
   const [pause, setPause] = useState<{ reason: string; startedAt: number; eventId?: string } | null>(null);
@@ -117,13 +120,60 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       .then(({ data }) => { if (data) sessionIdRef.current = data.id; });
   }, [operatorId]);
 
+  // Load operator's individual daily goal (falls back to global goal)
+  useEffect(() => {
+    async function loadGoal() {
+      // 1. Try individual goal on profile
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("daily_contacts_goal")
+        .eq("id", operatorId)
+        .single();
+
+      if (profile?.daily_contacts_goal != null) {
+        setDailyGoal(profile.daily_contacts_goal);
+        return;
+      }
+
+      // 2. Fallback to global goals table
+      const { data: globalGoal } = await supabase
+        .from("goals")
+        .select("daily_contacts")
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (globalGoal?.daily_contacts) {
+        setDailyGoal(globalGoal.daily_contacts);
+      }
+    }
+    loadGoal();
+  }, [operatorId]);
+
+  // Load today's counters from presence
+  useEffect(() => {
+    supabase
+      .from("operator_presence")
+      .select("contacts_today, conversions_today, talk_seconds, pause_seconds")
+      .eq("operator_id", operatorId)
+      .single()
+      .then(({ data }) => {
+        if (data) {
+          setContacts(data.contacts_today ?? 0);
+          setConversions(data.conversions_today ?? 0);
+          talkSecondsRef.current = data.talk_seconds ?? 0;
+          pauseSecondsRef.current = data.pause_seconds ?? 0;
+        }
+      });
+  }, [operatorId]);
+
   const [callOpen, setCallOpen] = useState(false);
   const [callStart, setCallStart] = useState<number | null>(null);
   const [history, setHistory] = useState<ProgressPoint[]>(() =>
     Array.from({ length: 6 }, (_, i) => ({
       label: `${8 + i}h`,
-      contatos: Math.round(((i + 1) / 6) * 42),
-      meta: Math.round(((i + 1) / 9) * DAILY_GOAL),
+      contatos: 0,
+      meta: Math.round(((i + 1) / 9) * DEFAULT_DAILY_GOAL),
     })),
   );
   const shiftStart = useRef(Date.now() - 4 * 3600 * 1000);
@@ -139,7 +189,6 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
   const stepSeconds = pause ? 0 : Math.floor((now - stepStart) / 1000);
   const callSeconds = callStart ? Math.floor((now - callStart) / 1000) : 0;
 
-  // Keep refs in sync so async handlers have fresh values
   useEffect(() => { talkSecondsRef.current = callSeconds; }, [callSeconds]);
   useEffect(() => {
     if (pause) pauseSecondsRef.current = Math.floor((Date.now() - pause.startedAt) / 1000);
@@ -148,7 +197,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
   const allDone = stepDone.every(Boolean);
   const workedHours = Math.max(0.5, (now - shiftStart.current) / 3600000);
   const pace = Math.round((contacts / workedHours) * 10) / 10;
-  const progress = Math.min(1, contacts / DAILY_GOAL);
+  const progress = Math.min(1, contacts / dailyGoal);
   const insight = insightFor(progress);
   const nextLeadIn = allDone ? Math.max(0, 5 - Math.floor((now - (completedAt.current ?? now)) / 1000)) : 180;
 
@@ -160,7 +209,6 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
     toast.warning(message, { duration: 6000 });
   };
 
-  // Monitoramento de alertas
   useEffect(() => {
     if (pause) return;
     if (stepSeconds > STEP_ALERT_SECONDS) {
@@ -169,14 +217,13 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
     if (allDone && completedAt.current && (now - completedAt.current) / 1000 > IDLE_ALERT_SECONDS) {
       pushAlert(`idle-${lead.id}`, "Ligação concluída — avance para o próximo lead.");
     }
-    const expected = Math.round(workedHours * (DAILY_GOAL / 8));
+    const expected = Math.round(workedHours * (dailyGoal / 8));
     if (contacts < expected - 2) {
       pushAlert(`pace-${Math.floor(workedHours)}`, `Ritmo abaixo da meta: esperado ${expected} contatos, você tem ${contacts}.`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stepSeconds, allDone, contacts, pause]);
 
-  // Alerta discreto de ligação longa
   useEffect(() => {
     if (callOpen && callSeconds > LONG_CALL_SECONDS) {
       if (!firedAlerts.current[`call-${lead.id}`]) {
@@ -201,7 +248,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
   };
 
   const value: CrmValue = {
-    goal: DAILY_GOAL,
+    goal: dailyGoal,
     contacts,
     conversions,
     conversations,
@@ -221,6 +268,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
     goalReached: progress >= 1,
     callOpen,
     callSeconds,
+
     startPause: async (reason) => {
       const nowTime = Date.now();
       setPause({ reason, startedAt: nowTime });
@@ -234,6 +282,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       setPause({ reason, startedAt: nowTime, eventId: data?.id });
       await pushPresence(operatorId, { state: "pausa", pause_reason: reason });
     },
+
     endPause: async () => {
       const ended = new Date().toISOString();
       const eventId = pause?.eventId;
@@ -245,6 +294,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       }
       await pushPresence(operatorId, { state: "ocioso", pause_reason: null, pause_seconds: pauseSecondsRef.current });
     },
+
     answered: () => {
       setConversations((c) => c + 1);
       setNegotiations((n) => n + 1);
@@ -252,45 +302,59 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       setCallOpen(true);
       void pushPresence(operatorId, { state: "ligacao", current_lead: lead.name });
     },
-    finishCall: async (outcome, customCallbackDays) => {
+
+    // callbackAt = ISO string of chosen datetime (for "retorno" outcome)
+    finishCall: async (outcome, callbackAt) => {
       const ended = new Date().toISOString();
       setCallOpen(false);
       setCallStart(null);
       advance("call");
+
       const newContacts = contacts + 1;
+      setContacts(newContacts);
+
       let newConversions = conversions;
+      let callbackDateIso: string | null = callbackAt ?? null;
 
-      // Calculate callback date if outcome requires return or customCallbackDays specified
-      let callbackDays = customCallbackDays;
-      if (callbackDays === undefined) {
-        if (outcome === "pensar") callbackDays = 3; // Default 3 days for "vai pensar"
-        else if (outcome === "revisao") callbackDays = 1;
+      // Auto-schedule callback for outcomes that didn't provide a date
+      if (!callbackDateIso) {
+        if (outcome === "pensar") {
+          const d = new Date(); d.setDate(d.getDate() + 3);
+          callbackDateIso = d.toISOString();
+        } else if (outcome === "sem_resposta") {
+          const d = new Date(); d.setDate(d.getDate() + 1);
+          callbackDateIso = d.toISOString();
+        }
       }
 
-      let callbackDateIso: string | null = null;
-      if (callbackDays && callbackDays > 0) {
-        const d = new Date();
-        d.setDate(d.getDate() + callbackDays);
-        callbackDateIso = d.toISOString();
-      }
+      // Map outcome → temperature and status
+      const temperature = OUTCOME_TEMPERATURE[outcome];
+      const newStatus =
+        outcome === "interessado" ? "converted" :
+        outcome === "nao" || outcome === "errado" ? "inactive" :
+        "contacted";
 
       if (outcome === "interessado") {
         setConversions((c) => { newConversions = c + 1; return c + 1; });
-        toast.success("Cliente interessado!");
+        toast.success("🎉 Cliente interessado! Lead marcado como Quente.");
       } else if (outcome === "pensar") {
-        toast.info(`Retorno agendado para daqui a ${callbackDays ?? 3} dias.`);
+        toast.info("Lead marcado como Morno — retorno em 3 dias.");
+      } else if (outcome === "retorno") {
+        toast.info("Retorno agendado com sucesso!");
+      } else if (outcome === "sem_resposta") {
+        toast.warning("Sem resposta — retorno agendado para amanhã.");
       } else if (outcome === "nao") {
-        toast("Lead classificado como inativo.");
+        toast("Lead marcado como Frio — inativo.");
       } else {
-        toast.warning("Contato marcado para revisão.");
+        toast.warning("Lead marcado para revisão.");
       }
 
-      // If lead has a real DB ID, update lead status & callback_at
+      // Update lead in DB — temperature + status + callback
       if (lead.realId) {
-        const newStatus = outcome === "interessado" ? "converted" : outcome === "nao" ? "inactive" : "contacted";
         await supabase
           .from("leads")
           .update({
+            temperature,
             status: newStatus,
             callback_at: callbackDateIso,
             updated_at: ended,
@@ -315,22 +379,29 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
         conversions_today: newConversions,
         talk_seconds: talkSecondsRef.current,
       });
+
+      // Update history chart
+      setHistory((h) => [
+        ...h.slice(-8),
+        { label: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }), contatos: newContacts, meta: dailyGoal },
+      ]);
+
+      qc.invalidateQueries({ queryKey: [...LEADS_QUERY_KEY, operatorId] });
     },
+
     notAnswered: async () => {
-      // Auto schedule return for tomorrow when lead doesn't answer
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
-      const callbackDateIso = tomorrow.toISOString();
-
-      toast("Sem atendimento. Retorno agendado para amanhã!");
+      toast.warning("Sem atendimento — retorno agendado para amanhã.");
       advance("call");
 
       if (lead.realId) {
         await supabase
           .from("leads")
           .update({
+            temperature: "frio",
             status: "contacted",
-            callback_at: callbackDateIso,
+            callback_at: tomorrow.toISOString(),
             updated_at: new Date().toISOString(),
           })
           .eq("id", lead.realId);
@@ -345,8 +416,13 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
         outcome: "sem_resposta",
         started_at: new Date().toISOString(),
       });
-      await pushPresence(operatorId, { state: "ocioso", contacts_today: contacts + 1 });
+
+      const newContacts = contacts + 1;
+      setContacts(newContacts);
+      await pushPresence(operatorId, { state: "ocioso", contacts_today: newContacts });
+      qc.invalidateQueries({ queryKey: [...LEADS_QUERY_KEY, operatorId] });
     },
+
     selectLead: (target) => {
       setLoadingLead(true);
       window.setTimeout(() => {
@@ -366,19 +442,13 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
         completedAt.current = null;
         setAlerts([]);
         setLoadingLead(false);
-        toast.success(`Atendendo cliente: ${target.name}`);
+        toast.success(`Atendendo: ${target.name}`);
       }, 300);
     },
+
     nextLead: () => {
       setLoadingLead(true);
       window.setTimeout(() => {
-        const newCount = contacts + 1;
-        setContacts(newCount);
-        if (Math.random() > 0.75) setConversions((c) => c + 1);
-        setHistory((h) => [
-          ...h.slice(-8),
-          { label: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }), contatos: newCount, meta: DAILY_GOAL },
-        ]);
         const fresh = generateLead();
         setLead(fresh);
         setStepIndex(0);
@@ -389,6 +459,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
         setLoadingLead(false);
       }, 700);
     },
+
     registerLead: (name, phone) => {
       toast.success(`Lead ${name} (${phone}) cadastrado na fila.`);
     },

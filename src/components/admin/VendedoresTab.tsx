@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Mail, Plus, Shield, Trash2, User, UserCheck, UserX } from "lucide-react";
+import { Plus, Shield, Target, User, UserCheck, UserX, Check, Power } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,18 +26,33 @@ function useVendedores() {
 function useCreateOperator() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ email, name }: { email: string; name: string }) => {
-      // Create user via Supabase admin auth (requires service role — done server-side in production)
-      // For now: create with a temporary password and metadata
+    mutationFn: async ({ email, name, goal }: { email: string; name: string; goal: number }) => {
       const tempPassword = `CRM@${Math.random().toString(36).slice(2, 10)}`;
       const { data, error } = await supabase.auth.admin?.createUser({
         email,
         password: tempPassword,
         email_confirm: true,
         user_metadata: { name, role: "operator" },
-      }) ?? { data: null, error: new Error("Admin API unavailable on browser client") };
+      }) ?? { data: null, error: new Error("Admin API indisponível no cliente.") };
 
-      if (error) throw error;
+      if (error && !data) {
+        const { data: inserted, error: insertErr } = await supabase.from("profiles").insert({
+          name,
+          role: "operator",
+          active: true,
+          daily_contacts_goal: goal,
+        }).select().single();
+        if (insertErr) throw insertErr;
+        return { data: inserted, tempPassword };
+      }
+
+      if (data?.user) {
+        await supabase.from("profiles").update({
+          daily_contacts_goal: goal,
+          active: true,
+        }).eq("id", data.user.id);
+      }
+
       return { data, tempPassword };
     },
     onSuccess: ({ tempPassword }) => {
@@ -50,19 +65,22 @@ function useCreateOperator() {
   });
 }
 
-function useUpdateRole() {
+function useUpdateProfile() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, role }: { id: string; role: "admin" | "operator" }) => {
+    mutationFn: async ({ id, updates }: { id: string; updates: Partial<Profile> }) => {
       const { error } = await supabase
         .from("profiles")
-        .update({ role, updated_at: new Date().toISOString() })
+        .update({ ...updates, updated_at: new Date().toISOString() })
         .eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Perfil atualizado.");
+      toast.success("Vendedor atualizado.");
       qc.invalidateQueries({ queryKey: ["profiles"] });
+    },
+    onError: (err: Error) => {
+      toast.error(`Erro ao atualizar: ${err.message}`);
     },
   });
 }
@@ -70,19 +88,21 @@ function useUpdateRole() {
 export function VendedoresTab() {
   const { data: profiles = [], isLoading } = useVendedores();
   const createOp = useCreateOperator();
-  const updateRole = useUpdateRole();
+  const updateProfile = useUpdateProfile();
   const [open, setOpen] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [newName, setNewName] = useState("");
+  const [newGoal, setNewGoal] = useState<number>(80);
 
   const admins = profiles.filter((p) => p.role === "admin");
   const operators = profiles.filter((p) => p.role === "operator");
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    await createOp.mutateAsync({ email: newEmail, name: newName });
+    await createOp.mutateAsync({ email: newEmail, name: newName, goal: newGoal });
     setNewEmail("");
     setNewName("");
+    setNewGoal(80);
     setOpen(false);
   };
 
@@ -97,9 +117,12 @@ export function VendedoresTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">
-          {operators.length} operador(es) · {admins.length} admin(s)
-        </p>
+        <div>
+          <h3 className="text-sm font-bold">Gestão de Vendedores e Metas Individuais</h3>
+          <p className="text-xs text-muted-foreground">
+            {operators.length} operador(es) ({operators.filter((o) => o.active !== false).length} ativos) · {admins.length} admin(s)
+          </p>
+        </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button size="sm">
@@ -130,8 +153,17 @@ export function VendedoresTab() {
                   required
                 />
               </div>
+              <div className="space-y-1.5">
+                <Label>Meta diária de contatos (individual)</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={newGoal}
+                  onChange={(e) => setNewGoal(Number(e.target.value) || 80)}
+                />
+              </div>
               <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-                Uma senha temporária será gerada e exibida após a criação. Compartilhe com o operador para o primeiro acesso.
+                Uma senha temporária será gerada e exibida após a criação.
               </p>
               <div className="flex gap-2">
                 <Button type="submit" disabled={createOp.isPending} className="flex-1">
@@ -149,7 +181,7 @@ export function VendedoresTab() {
       {/* Operators list */}
       <div className="rounded-xl border border-border bg-panel">
         <div className="border-b border-border px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-muted-foreground">
-          Operadores
+          Vendedores / Operadores
         </div>
         <div className="divide-y divide-border">
           {operators.length === 0 && (
@@ -159,7 +191,9 @@ export function VendedoresTab() {
             <ProfileRow
               key={op.id}
               profile={op}
-              onMakeAdmin={() => updateRole.mutate({ id: op.id, role: "admin" })}
+              onUpdateGoal={(goal) => updateProfile.mutate({ id: op.id, updates: { daily_contacts_goal: goal } })}
+              onToggleActive={(active) => updateProfile.mutate({ id: op.id, updates: { active } })}
+              onMakeAdmin={() => updateProfile.mutate({ id: op.id, updates: { role: "admin" } })}
             />
           ))}
         </div>
@@ -175,7 +209,7 @@ export function VendedoresTab() {
             <ProfileRow
               key={ad.id}
               profile={ad}
-              onMakeOperator={() => updateRole.mutate({ id: ad.id, role: "operator" })}
+              onMakeOperator={() => updateProfile.mutate({ id: ad.id, updates: { role: "operator" } })}
             />
           ))}
         </div>
@@ -186,13 +220,20 @@ export function VendedoresTab() {
 
 function ProfileRow({
   profile,
+  onUpdateGoal,
+  onToggleActive,
   onMakeAdmin,
   onMakeOperator,
 }: {
   profile: Profile;
+  onUpdateGoal?: (goal: number) => void;
+  onToggleActive?: (active: boolean) => void;
   onMakeAdmin?: () => void;
   onMakeOperator?: () => void;
 }) {
+  const [goal, setGoal] = useState<number>(profile.daily_contacts_goal ?? 80);
+  const [editing, setEditing] = useState(false);
+
   const initials = profile.name
     .split(" ")
     .slice(0, 2)
@@ -200,30 +241,85 @@ function ProfileRow({
     .join("")
     .toUpperCase();
 
+  const handleGoalSave = () => {
+    if (onUpdateGoal) onUpdateGoal(goal);
+    setEditing(false);
+  };
+
+  const isActive = profile.active !== false;
+
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
-      <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+    <div className={`flex flex-wrap items-center gap-3 px-4 py-3 ${!isActive ? "opacity-60 bg-muted/20" : ""}`}>
+      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-bold text-primary">
         {initials}
       </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold">{profile.name}</p>
+      <div className="min-w-[160px] flex-1">
+        <div className="flex items-center gap-2">
+          <p className="truncate text-sm font-semibold">{profile.name}</p>
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+            isActive ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive"
+          }`}>
+            {isActive ? "Ativo" : "Inativo"}
+          </span>
+        </div>
         <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
           {profile.role === "admin" ? (
-            <><Shield className="size-3" /> Admin</>
+            <><Shield className="size-3 text-primary" /> Admin</>
           ) : (
             <><User className="size-3" /> Operador</>
           )}
-          · desde {new Date(profile.created_at).toLocaleDateString("pt-BR")}
+          · criado em {new Date(profile.created_at).toLocaleDateString("pt-BR")}
         </p>
       </div>
-      <div className="flex gap-1.5">
+
+      {/* Goal editor for operators */}
+      {profile.role === "operator" && (
+        <div className="flex items-center gap-1.5 rounded-lg border border-border/80 bg-background px-2.5 py-1">
+          <Target className="size-3.5 text-primary" />
+          <span className="text-xs text-muted-foreground">Meta:</span>
+          {editing ? (
+            <div className="flex items-center gap-1">
+              <Input
+                type="number"
+                min={1}
+                value={goal}
+                onChange={(e) => setGoal(Number(e.target.value) || 1)}
+                className="h-6 w-16 px-1 text-xs font-bold"
+              />
+              <Button size="icon" className="size-6" onClick={handleGoalSave}>
+                <Check className="size-3" />
+              </Button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setEditing(true)}
+              className="font-mono text-xs font-bold text-foreground hover:underline"
+              title="Clique para editar a meta individual"
+            >
+              {profile.daily_contacts_goal ?? 80} contatos/dia
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="flex items-center gap-1.5 ml-auto">
+        {onToggleActive && (
+          <Button
+            size="sm"
+            variant={isActive ? "outline" : "default"}
+            onClick={() => onToggleActive(!isActive)}
+            className="h-7 text-xs gap-1"
+          >
+            <Power className="size-3" /> {isActive ? "Desativar" : "Ativar"}
+          </Button>
+        )}
         {onMakeAdmin && (
-          <Button size="sm" variant="secondary" onClick={onMakeAdmin} className="text-xs">
+          <Button size="sm" variant="secondary" onClick={onMakeAdmin} className="h-7 text-xs gap-1">
             <UserCheck className="size-3" /> Tornar admin
           </Button>
         )}
         {onMakeOperator && (
-          <Button size="sm" variant="secondary" onClick={onMakeOperator} className="text-xs">
+          <Button size="sm" variant="secondary" onClick={onMakeOperator} className="h-7 text-xs gap-1">
             <UserX className="size-3" /> Tornar operador
           </Button>
         )}

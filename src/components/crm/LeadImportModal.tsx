@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useImportLeads, type LeadInput } from "@/hooks/useLeads";
+import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 
 // ─── CSV parser ───────────────────────────────────────────────────────────────
@@ -70,13 +71,14 @@ const LEAD_FIELDS: { key: keyof LeadInput; label: string; required?: boolean }[]
 interface LeadImportModalProps {
   open: boolean;
   onClose: () => void;
-  operatorId: string;
+  operatorId?: string;
+  autoDistribute?: boolean;
 }
 
 type Step = "upload" | "map" | "preview" | "done";
 
-export function LeadImportModal({ open, onClose, operatorId }: LeadImportModalProps) {
-  const importLeads = useImportLeads(operatorId);
+export function LeadImportModal({ open, onClose, operatorId, autoDistribute = false }: LeadImportModalProps) {
+  const importLeads = useImportLeads(operatorId ?? "");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [step, setStep] = useState<Step>("upload");
@@ -84,7 +86,8 @@ export function LeadImportModal({ open, onClose, operatorId }: LeadImportModalPr
   const [headers, setHeaders] = useState<string[]>([]);
   const [rows, setRows] = useState<Record<string, string>[]>([]);
   const [mapping, setMapping] = useState<Record<keyof LeadInput, string>>({} as Record<keyof LeadInput, string>);
-  const [result, setResult] = useState<{ totalInserted: number; errors: string[] } | null>(null);
+  const [result, setResult] = useState<{ totalInserted: number; errors: string[]; distributionSummary?: string } | null>(null);
+  const [loadingImport, setLoadingImport] = useState(false);
 
   const reset = () => {
     setStep("upload");
@@ -92,6 +95,7 @@ export function LeadImportModal({ open, onClose, operatorId }: LeadImportModalPr
     setRows([]);
     setMapping({} as Record<keyof LeadInput, string>);
     setResult(null);
+    setLoadingImport(false);
   };
 
   const handleFile = useCallback((file: File) => {
@@ -145,7 +149,6 @@ export function LeadImportModal({ open, onClose, operatorId }: LeadImportModalPr
         const col = mapping[key];
         if (col && row[col]) lead[key] = row[col].trim();
       });
-      // Normalise temperature
       if (lead.temperature) {
         const t = lead.temperature.toLowerCase();
         if (t.includes("quente") || t.includes("hot")) lead.temperature = "quente";
@@ -157,11 +160,78 @@ export function LeadImportModal({ open, onClose, operatorId }: LeadImportModalPr
     }).filter((l) => !!l.name);
 
   const handleImport = async () => {
-    const leads = mappedRows();
-    if (leads.length === 0) { toast.error("Nenhum lead com nome encontrado."); return; }
-    const res = await importLeads.mutateAsync(leads);
-    setResult(res);
-    setStep("done");
+    const rawLeads = mappedRows();
+    if (rawLeads.length === 0) { toast.error("Nenhum lead com nome encontrado."); return; }
+
+    setLoadingImport(true);
+
+    try {
+      if (autoDistribute) {
+        // Fetch active operators for Round-Robin distribution
+        const { data: activeOps, error: opErr } = await supabase
+          .from("profiles")
+          .select("id, name")
+          .eq("role", "operator")
+          .neq("active", false);
+
+        if (opErr) throw opErr;
+
+        if (!activeOps || activeOps.length === 0) {
+          toast.error("Nenhum vendedor ativo encontrado para receber os leads.");
+          setLoadingImport(false);
+          return;
+        }
+
+        // Round-robin distribution
+        const preparedRows = rawLeads.map((l, index) => {
+          const assignedOp = activeOps[index % activeOps.length]!;
+          return {
+            name: l.name,
+            phone: l.phone || null,
+            phone2: l.phone2 || null,
+            cpf: l.cpf || null,
+            email: l.email || null,
+            city: l.city || null,
+            state: l.state || null,
+            profession: l.profession || null,
+            company: l.company || null,
+            temperature: (l.temperature ?? "frio") as "quente" | "morno" | "frio",
+            origin: l.origin ?? "csv",
+            status: "pending" as const,
+            assigned_to: assignedOp.id,
+            notes: l.notes || null,
+            callback_at: l.callback_at || null,
+          };
+        });
+
+        // Insert in batches of 100
+        const BATCH = 100;
+        let totalInserted = 0;
+        const errors: string[] = [];
+        for (let i = 0; i < preparedRows.length; i += BATCH) {
+          const batch = preparedRows.slice(i, i + BATCH);
+          const { data, error } = await supabase.from("leads").insert(batch).select("id");
+          if (error) {
+            errors.push(`Linhas ${i + 1}–${i + batch.length}: ${error.message}`);
+          } else {
+            totalInserted += data?.length ?? 0;
+          }
+        }
+
+        const summary = `${totalInserted} leads distribuídos igualmente entre ${activeOps.length} vendedor(es) ativo(s) (${Math.floor(totalInserted / activeOps.length)} cada).`;
+        setResult({ totalInserted, errors, distributionSummary: summary });
+        toast.success(summary);
+      } else {
+        const res = await importLeads.mutateAsync(rawLeads);
+        setResult(res);
+      }
+      setStep("done");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro desconhecido";
+      toast.error(`Erro ao importar: ${msg}`);
+    } finally {
+      setLoadingImport(false);
+    }
   };
 
   return (
@@ -178,7 +248,11 @@ export function LeadImportModal({ open, onClose, operatorId }: LeadImportModalPr
           <div className="space-y-4 pt-2">
             <p className="text-sm text-muted-foreground">
               Importe sua base de contatos a partir de um arquivo <strong>.csv</strong>.{" "}
-              Se tiver Excel, use <em>Arquivo → Salvar como → CSV UTF-8</em>.
+              {autoDistribute && (
+                <span className="font-semibold text-primary">
+                  Os leads serão distribuídos automaticamente de forma igualitária (Round-Robin) entre todos os vendedores ativos.
+                </span>
+              )}
             </p>
 
             <div
@@ -294,17 +368,23 @@ export function LeadImportModal({ open, onClose, operatorId }: LeadImportModalPr
               </p>
             )}
 
+            {autoDistribute && (
+              <div className="rounded-lg bg-primary/10 border border-primary/30 p-2.5 text-xs text-primary font-medium">
+                🔄 <b>Distribuição Automática Ativa:</b> Os {mappedRows().length} leads serão atribuídos em modo Round-Robin sequencial aos vendedores com status Ativo.
+              </div>
+            )}
+
             <div className="flex gap-2">
               <Button variant="secondary" onClick={() => setStep("map")}>Ajustar mapeamento</Button>
               <Button
                 className="flex-1"
-                disabled={importLeads.isPending}
+                disabled={loadingImport || importLeads.isPending}
                 onClick={handleImport}
               >
-                {importLeads.isPending ? (
+                {loadingImport || importLeads.isPending ? (
                   <><Loader2 className="size-4 animate-spin" /> Importando...</>
                 ) : (
-                  `Importar ${mappedRows().length} leads`
+                  `Importar e Distribuir ${mappedRows().length} leads`
                 )}
               </Button>
             </div>
@@ -317,7 +397,11 @@ export function LeadImportModal({ open, onClose, operatorId }: LeadImportModalPr
             <div className="flex flex-col items-center gap-3 py-4">
               <CheckCircle2 className="size-14 text-success" />
               <h3 className="text-xl font-bold">{result.totalInserted} leads importados!</h3>
-              <p className="text-sm text-muted-foreground">Sua carteira de clientes foi atualizada com sucesso.</p>
+              {result.distributionSummary && (
+                <p className="text-sm text-center font-medium text-primary px-4 bg-primary/10 py-2 rounded-lg">
+                  {result.distributionSummary}
+                </p>
+              )}
             </div>
 
             {result.errors.length > 0 && (
@@ -332,7 +416,7 @@ export function LeadImportModal({ open, onClose, operatorId }: LeadImportModalPr
             )}
 
             <Button className="w-full" onClick={() => { reset(); onClose(); }}>
-              Fechar e ver leads
+              Concluir
             </Button>
           </div>
         )}
