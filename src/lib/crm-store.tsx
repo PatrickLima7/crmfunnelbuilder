@@ -120,6 +120,34 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       .then(({ data }) => { if (data) sessionIdRef.current = data.id; });
   }, [operatorId]);
 
+  // Load initial real lead from Supabase (if available)
+  useEffect(() => {
+    async function loadFirstLead() {
+      const { data } = await supabase
+        .from("leads")
+        .select("*")
+        .eq("assigned_to", operatorId)
+        .eq("status", "pending")
+        .order("created_at", { ascending: true })
+        .limit(1);
+
+      if (data && data.length > 0) {
+        const target = data[0]!;
+        setLead({
+          id: `lead-${target.id}`,
+          realId: target.id,
+          name: target.name,
+          phone: target.phone ?? "(11) 99999-9999",
+          profession: target.profession ?? "Cliente cadastrado",
+          isNew: false,
+          status: (target.temperature ?? "morno") as import("./crm-data").LeadStatus,
+          returnTime: "10:00",
+        });
+      }
+    }
+    loadFirstLead();
+  }, [operatorId]);
+
   // Load operator's individual daily goal (falls back to global goal)
   useEffect(() => {
     async function loadGoal() {
@@ -446,18 +474,38 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       }, 300);
     },
 
-    nextLead: () => {
+    nextLead: async () => {
       setLoadingLead(true);
-      window.setTimeout(() => {
+      const { data } = await supabase
+        .from("leads")
+        .select("*")
+        .eq("assigned_to", operatorId)
+        .eq("status", "pending")
+        .order("created_at", { ascending: true })
+        .limit(1);
+
+      if (data && data.length > 0) {
+        const target = data[0]!;
+        setLead({
+          id: `lead-${target.id}`,
+          realId: target.id,
+          name: target.name,
+          phone: target.phone ?? "(11) 99999-9999",
+          profession: target.profession ?? "Cliente cadastrado",
+          isNew: false,
+          status: (target.temperature ?? "morno") as import("./crm-data").LeadStatus,
+          returnTime: "10:00",
+        });
+      } else {
         const fresh = generateLead();
         setLead(fresh);
-        setStepIndex(0);
-        setStepDone([false]);
-        setStepStart(Date.now());
-        completedAt.current = null;
-        setAlerts([]);
-        setLoadingLead(false);
-      }, 700);
+      }
+      setStepIndex(0);
+      setStepDone([false]);
+      setStepStart(Date.now());
+      completedAt.current = null;
+      setAlerts([]);
+      setLoadingLead(false);
     },
 
     registerLead: (name, phone) => {
