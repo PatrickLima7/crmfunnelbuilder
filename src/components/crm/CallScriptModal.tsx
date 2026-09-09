@@ -69,27 +69,24 @@ export function CallScriptModal() {
   const validateAndFinish = async () => {
     if (!outcome) return;
 
-    if (outcome === "retorno") {
-      if (!returnDate || !returnTime) {
+    let callbackIso: string | undefined = undefined;
+
+    if (outcome !== "em_nutricao" && outcome !== "convertido") {
+      if (returnDate && returnTime) {
+        const selected = new Date(`${returnDate}T${returnTime}`);
+        if (selected < new Date()) {
+          setRetornoError("A data/hora de retorno deve ser no futuro.");
+          return;
+        }
+        callbackIso = selected.toISOString();
+      } else if (outcome === "retorno") {
         setRetornoError("Por favor, selecione data e hora de retorno.");
         return;
       }
-      const selected = new Date(`${returnDate}T${returnTime}`);
-      if (selected < new Date()) {
-        setRetornoError("A data/hora de retorno deve ser no futuro.");
-        return;
-      }
-
-      setRetornoError(null);
-      await crm.finishCall("retorno", selected.toISOString());
-      reset();
-      return;
     }
 
-    await crm.finishCall(
-      outcome,
-      outcome === "pensar" ? callbackDays.toString() : undefined
-    );
+    setRetornoError(null);
+    await crm.finishCall(outcome, callbackIso);
     reset();
   };
 
@@ -264,9 +261,9 @@ export function CallScriptModal() {
                 ))}
               </div>
 
-              {outcome === "retorno" && (
+              {outcome && outcome !== "em_nutricao" && outcome !== "convertido" && (
                 <div className="space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
-                  <p className="text-xs font-bold text-primary">📅 Definir data e hora do retorno:</p>
+                  <p className="text-xs font-bold text-primary">📅 Definir data e hora do retorno {outcome === "retorno" ? "(obrigatório)" : "(opcional)"}:</p>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-[10px] font-semibold text-muted-foreground uppercase">Data</label>

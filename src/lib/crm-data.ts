@@ -21,14 +21,14 @@ export const PAUSE_REASONS = [
 
 export const STEPS = [
   {
-    key: "call",
-    label: "Ligação telefônica",
-    hint: "Apresente-se, confirme o interesse e use o script como guia.",
+    key: "call_phone",
+    label: "Ligação telefônica (operadora)",
+    hint: "Realize a chamada telefônica via operadora normal.",
   },
   {
-    key: "whatsapp",
-    label: "Mensagem WhatsApp",
-    hint: "Envie mensagem de acompanhamento via WhatsApp.",
+    key: "call_whatsapp",
+    label: "Ligação via WhatsApp",
+    hint: "Realize a chamada de voz via WhatsApp.",
   },
 ] as const;
 

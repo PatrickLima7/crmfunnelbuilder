@@ -18,7 +18,10 @@ export function BlockingAlertModal({ alert }: BlockingAlertModalProps) {
 
   return (
     <AlertDialog open={!!alert} onOpenChange={() => {/* prevent closing */}}>
-      <AlertDialogContent className="border-destructive/50 bg-background">
+      <AlertDialogContent
+        className="border-destructive/50 bg-background"
+        onEscapeKeyDown={(e) => e.preventDefault()}
+      >
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2 text-destructive">
             <AlertTriangle className="size-5" />

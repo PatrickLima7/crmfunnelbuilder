@@ -113,15 +113,11 @@ export const CALL_OUTCOMES = [
     hint: "Telefone incorreto ou inexistente",
     temperature: "frio" as const,
   },
-  {
-    key: "sem_resposta",
-    label: "📵 Não atendeu",
-    hint: "Retorno automático amanhã",
-    temperature: "frio" as const,
-  },
 ] as const;
 
-export type CallOutcome = (typeof CALL_OUTCOMES)[number]["key"];
+export type CallOutcome =
+  | (typeof CALL_OUTCOMES)[number]["key"]
+  | "sem_resposta";
 
 // Temperature mapping for each outcome
 export const OUTCOME_TEMPERATURE: Record<CallOutcome, "quente" | "morno" | "frio"> = {

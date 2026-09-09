@@ -1,4 +1,4 @@
-import { Activity, Flame, Sparkles, Target, TrendingUp, Users, ThermometerSun, RotateCcw, Zap, Layers } from "lucide-react";
+import { Activity, Flame, Sparkles, Target, TrendingUp, Users, ThermometerSun, RotateCcw, Zap, Layers, Sprout } from "lucide-react";
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useCrm } from "@/lib/crm-store";
 
@@ -64,6 +64,7 @@ export function MetricsSidebar() {
         <Metric icon={RotateCcw} label="Retornos" value={String(crm.returns)} tone={crm.returns > 0 ? "warning" : "default"} />
         <Metric icon={ThermometerSun} label="Quentes" value={String(crm.hotLeads)} tone="success" />
         <Metric icon={Zap} label="Convertidos (mês)" value={String(crm.monthlyConverted)} tone="success" />
+        <Metric icon={Sprout} label="Em Nutrição" value={String((crm as any).nutritionLeads ?? 0)} tone="warning" />
       </div>
 
       <div className="shrink-0 rounded-[var(--radius)] border border-success/40 bg-success/10 p-2">

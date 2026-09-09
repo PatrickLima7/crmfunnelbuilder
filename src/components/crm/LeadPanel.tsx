@@ -35,58 +35,39 @@ export function LeadPanel({ operator }: { operator: string }) {
           {/* ── Lead card ── */}
           <div className="shrink-0 rounded-[var(--radius)] border border-border bg-panel p-4">
             <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-              <div className="min-w-0">
+              <div className="min-w-0 space-y-1">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Lead em atendimento
                 </p>
                 <h2 className="truncate text-2xl font-bold">{crm.lead.name}</h2>
-                <p className="font-mono text-sm text-muted-foreground">{crm.lead.phone}</p>
-                {/* Campos visíveis antes do atendimento */}
+                <p className="font-mono text-sm font-semibold text-primary">{crm.lead.phone}</p>
+                
+                {/* Apenas os 7 campos visíveis autorizados ao operador */}
                 {crm.lead.curso && (
-                  <p className="text-sm text-muted-foreground">
-                    <span className="font-semibold">Curso:</span> {crm.lead.curso}
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-semibold text-foreground">Curso de interesse:</span> {crm.lead.curso}
                   </p>
                 )}
                 {crm.lead.city && (
-                  <p className="text-sm text-muted-foreground">
-                    <span className="font-semibold">Cidade:</span> {crm.lead.city}
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-semibold text-foreground">Cidade:</span> {crm.lead.city}
                     {crm.lead.state ? ` / ${crm.lead.state}` : ""}
                   </p>
                 )}
-                {crm.lead.origin && (
-                  <p className="text-sm text-muted-foreground">
-                    <span className="font-semibold">Origem:</span> {crm.lead.origin}
+                {(crm.lead.midia || crm.lead.origin) && (
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-semibold text-foreground">Mídia:</span> {crm.lead.midia || crm.lead.origin}
                   </p>
                 )}
                 {crm.lead.createdAt && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Cadastrado em {new Date(crm.lead.createdAt).toLocaleDateString("pt-BR")}
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-semibold text-foreground">Data/Hora do cadastro:</span> {new Date(crm.lead.createdAt).toLocaleString("pt-BR")}
                   </p>
                 )}
-                {/* Campos revelados após iniciar ligação */}
-                {crm.callOpen && (
-                  <div className="mt-2 space-y-0.5 border-t border-border/40 pt-2">
-                    {crm.lead.profession && (
-                      <p className="text-sm text-muted-foreground">
-                        <span className="font-semibold">Profissão:</span> {crm.lead.profession}
-                      </p>
-                    )}
-                    {crm.lead.email && (
-                      <p className="text-sm text-muted-foreground">
-                        <span className="font-semibold">E-mail:</span> {crm.lead.email}
-                      </p>
-                    )}
-                    {crm.lead.company && (
-                      <p className="text-sm text-muted-foreground">
-                        <span className="font-semibold">Empresa:</span> {crm.lead.company}
-                      </p>
-                    )}
-                    {crm.lead.cpf && (
-                      <p className="text-sm text-muted-foreground">
-                        <span className="font-semibold">CPF:</span> {crm.lead.cpf}
-                      </p>
-                    )}
-                  </div>
+                {(crm.lead.notes || (crm.lead as any).observacao) && (
+                  <p className="mt-1 rounded-md bg-muted/40 p-2 text-xs text-muted-foreground">
+                    <span className="font-semibold text-foreground">Observação final:</span> {crm.lead.notes || (crm.lead as any).observacao}
+                  </p>
                 )}
               </div>
               <div className="flex shrink-0 flex-col items-end gap-2">
@@ -109,10 +90,10 @@ export function LeadPanel({ operator }: { operator: string }) {
             </div>
           </div>
 
-          {/* ── Ligação ── */}
+          {/* ── Protocolo de Ligações ── */}
           <div className="shrink-0 rounded-[var(--radius)] border border-border bg-panel p-4">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Protocolo de contato
+              Protocolo de atendimento (2 Ligações)
             </p>
 
             <div className="mt-3 space-y-2">
@@ -138,25 +119,12 @@ export function LeadPanel({ operator }: { operator: string }) {
                     </span>
                     {!crm.stepDone[idx] && (idx === 0 || crm.stepDone[idx - 1]) && (
                       <div className="flex gap-2">
-                        {step.key === "call" ? (
-                          <>
-                            <Button size="sm" variant="destructive" onClick={crm.notAnswered}>
-                              <Phone /> Não atendeu
-                            </Button>
-                            <Button size="sm" variant="success" onClick={crm.answered}>
-                              <PhoneCall /> Atendeu
-                            </Button>
-                          </>
-                        ) : (
-                          <>
-                            <Button size="sm" variant="secondary" onClick={() => crm.completeStep(idx)}>
-                              <MessageCircle /> Não enviou
-                            </Button>
-                            <Button size="sm" variant="success" onClick={crm.whatsappSent}>
-                              <MessageCircle /> Enviou WhatsApp
-                            </Button>
-                          </>
-                        )}
+                        <Button size="sm" variant="destructive" onClick={() => (crm as any).notAnswered?.(idx)}>
+                          <Phone /> Não atendeu
+                        </Button>
+                        <Button size="sm" variant="success" onClick={() => (crm as any).answered?.(idx)}>
+                          <PhoneCall /> Atendeu
+                        </Button>
                       </div>
                     )}
                   </div>
@@ -174,7 +142,7 @@ export function LeadPanel({ operator }: { operator: string }) {
               <span className="font-semibold text-warning">Dica: </span>
               {crm.stepDone.every(Boolean)
                 ? "Todas as etapas concluídas — adicione observações e avance."
-                : "Complete cada etapa na ordem: Ligação → WhatsApp."}
+                : "Complete cada etapa na ordem: 1ª Ligação (operadora) → 2ª Ligação (WhatsApp)."}
             </div>
 
             {/* Script modal trigger */}

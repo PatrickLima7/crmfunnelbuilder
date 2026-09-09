@@ -60,9 +60,22 @@ export function Topbar({ operator }: { operator: string }) {
       </span>
 
       {crm.alerts.length > 0 && (
-        <span className="animate-pulse-alert flex items-center gap-1.5 rounded-md bg-destructive px-2.5 py-1 text-xs font-semibold text-destructive-foreground">
-          <Bell className="size-3.5" /> {crm.alerts.length} alerta(s)
-        </span>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="animate-pulse-alert flex cursor-pointer items-center gap-1.5 rounded-md bg-destructive px-2.5 py-1 text-xs font-semibold text-destructive-foreground hover:opacity-90">
+              <Bell className="size-3.5" /> {crm.alerts.length} alerta(s)
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuLabel>Alertas do Sistema (Clique para resolver)</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {crm.alerts.map((a, i) => (
+              <DropdownMenuItem key={i} onSelect={() => (crm as any).triggerAlertTask?.(a)}>
+                ⚠️ {a}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
 
       {crm.pause && (

@@ -79,6 +79,8 @@ interface CrmValue {
     createdAt?: string;
     midia?: string | null;
     campanha?: string | null;
+    notes?: string | null;
+    observacao?: string | null;
   };
   loadingLead: boolean;
   stepIndex: number;
@@ -432,7 +434,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       const ended = new Date().toISOString();
       setCallOpen(false);
       setCallStart(null);
-      advance("call");
+      advance("call_phone");
 
       const newContacts = contacts + 1;
       setContacts(newContacts);
@@ -517,7 +519,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       toast.warning("Sem atendimento — retorno agendado para amanhã.");
-      advance("call");
+      advance("call_phone");
 
       if (lead.realId) {
         await supabase
