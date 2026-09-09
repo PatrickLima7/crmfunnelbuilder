@@ -189,7 +189,7 @@ export type Database = {
           session_id: string | null;
           lead_name: string | null;
           lead_phone: string | null;
-          contact_type: "call" | "whatsapp";
+          contact_type: "call" | "whatsapp" | "whatsapp_message";
           outcome: "interessado" | "pensar" | "nao" | "sem_resposta" | "revisao" | "retorno" | "errado" | "convertido" | "sem_interesse" | "numero_invalido" | "em_nutricao" | "agendado" | null;
           motivo_desinteresse: string | null;
           started_at: string;
@@ -202,7 +202,7 @@ export type Database = {
           session_id?: string | null;
           lead_name?: string | null;
           lead_phone?: string | null;
-          contact_type: "call" | "whatsapp";
+          contact_type: "call" | "whatsapp" | "whatsapp_message";
           outcome?: "interessado" | "pensar" | "nao" | "sem_resposta" | "revisao" | "retorno" | "errado" | "convertido" | "sem_interesse" | "numero_invalido" | "em_nutricao" | "agendado" | null;
           motivo_desinteresse?: string | null;
           started_at?: string;

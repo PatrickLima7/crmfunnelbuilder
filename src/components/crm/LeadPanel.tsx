@@ -1,4 +1,4 @@
-import { CheckCircle2, Circle, Loader2, Phone, PhoneCall, Timer, MessageCircle } from "lucide-react";
+import { CheckCircle2, Circle, Loader2, MessageSquare, Phone, PhoneCall, Timer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatClock, STEPS } from "@/lib/crm-data";
@@ -9,6 +9,9 @@ import { BlockingAlertModal } from "./BlockingAlertModal";
 export function LeadPanel({ operator }: { operator: string }) {
   const crm = useCrm();
   const stepLate = crm.stepSeconds > 300;
+
+  // null lead state — actual lead.id === "empty" is our sentinel
+  const hasRealLead = crm.lead.id !== "empty";
 
   // Status badge colors
   const statusColor =
@@ -29,6 +32,19 @@ export function LeadPanel({ operator }: { operator: string }) {
           <Loader2 className="size-6 animate-spin text-primary" />
           <p className="text-sm text-muted-foreground">Buscando próximo lead...</p>
         </div>
+      ) : !hasRealLead ? (
+        /* ── Empty queue state ── */
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 rounded-[var(--radius)] border border-dashed border-border bg-panel p-8 text-center">
+          <div className="flex size-16 items-center justify-center rounded-full bg-muted">
+            <Phone className="size-8 text-muted-foreground" />
+          </div>
+          <div>
+            <p className="text-base font-bold">Nenhum lead disponível</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Sua fila está vazia. Aguarde novos leads serem importados pelo administrador ou selecione um lead da sua carteira à direita.
+            </p>
+          </div>
+        </div>
       ) : (
         <div key={crm.lead.id} className="flex min-h-0 flex-1 animate-lead-in flex-col gap-3">
 
@@ -40,9 +56,11 @@ export function LeadPanel({ operator }: { operator: string }) {
                   Lead em atendimento
                 </p>
                 <h2 className="truncate text-2xl font-bold">{crm.lead.name}</h2>
-                <p className="font-mono text-sm font-semibold text-primary">{crm.lead.phone}</p>
-                
-                {/* Apenas os 7 campos visíveis autorizados ao operador */}
+                {crm.lead.phone && (
+                  <p className="font-mono text-sm font-semibold text-primary">{crm.lead.phone}</p>
+                )}
+
+                {/* Apenas os campos visíveis autorizados ao operador */}
                 {crm.lead.curso && (
                   <p className="text-xs text-muted-foreground">
                     <span className="font-semibold text-foreground">Curso de interesse:</span> {crm.lead.curso}
@@ -93,59 +111,88 @@ export function LeadPanel({ operator }: { operator: string }) {
           {/* ── Protocolo de Ligações ── */}
           <div className="shrink-0 rounded-[var(--radius)] border border-border bg-panel p-4">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Protocolo de atendimento (2 Ligações)
+              Protocolo de atendimento (3 etapas)
             </p>
 
             <div className="mt-3 space-y-2">
-              {STEPS.map((step, idx) => (
-                <div
-                  key={step.key}
-                  className={`rounded-[var(--radius)] border p-3 transition-colors ${
-                    crm.stepDone[idx]
-                      ? "border-success/40 bg-success/5"
-                      : idx === 0 || crm.stepDone[idx - 1]
-                        ? "border-primary/60 bg-primary/10"
-                        : "border-border bg-muted/30 opacity-60"
-                  }`}
-                >
-                  <div className="flex flex-wrap items-center gap-3">
-                    {crm.stepDone[idx] ? (
-                      <CheckCircle2 className="size-4 shrink-0 text-success" />
-                    ) : (
-                      <Circle className="size-4 shrink-0 text-muted-foreground" />
-                    )}
-                    <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-                      {step.label}
-                    </span>
-                    {!crm.stepDone[idx] && (idx === 0 || crm.stepDone[idx - 1]) && (
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="destructive" onClick={() => (crm as any).notAnswered?.(idx)}>
-                          <Phone /> Não atendeu
-                        </Button>
-                        <Button size="sm" variant="success" onClick={() => (crm as any).answered?.(idx)}>
-                          <PhoneCall /> Atendeu
-                        </Button>
-                      </div>
+              {STEPS.map((step, idx) => {
+                const isWhatsAppMessage = step.key === "whatsapp_message";
+                const isActive = !crm.stepDone[idx] && (idx === 0 || crm.stepDone[idx - 1]);
+
+                return (
+                  <div
+                    key={step.key}
+                    className={`rounded-[var(--radius)] border p-3 transition-colors ${
+                      crm.stepDone[idx]
+                        ? "border-success/40 bg-success/5"
+                        : isActive
+                          ? "border-primary/60 bg-primary/10"
+                          : "border-border bg-muted/30 opacity-60"
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center gap-3">
+                      {crm.stepDone[idx] ? (
+                        <CheckCircle2 className="size-4 shrink-0 text-success" />
+                      ) : (
+                        <Circle className="size-4 shrink-0 text-muted-foreground" />
+                      )}
+                      <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+                        {step.label}
+                      </span>
+                      {isActive && (
+                        <div className="flex gap-2">
+                          {isWhatsAppMessage ? (
+                            /* Step 3: WhatsApp message — no call modal, just "sent" button */
+                            <>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => void crm.whatsappSent()}
+                              >
+                                <MessageSquare className="size-3.5" /> Mensagem enviada
+                              </Button>
+                            </>
+                          ) : (
+                            /* Steps 1 & 2: phone/WhatsApp call — open script modal */
+                            <>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => void crm.notAnswered(idx)}
+                              >
+                                <Phone className="size-3.5" /> Não atendeu
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="success"
+                                onClick={() => crm.answered(idx)}
+                              >
+                                <PhoneCall className="size-3.5" /> Atendeu
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {isActive && (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {step.hint}
+                      </p>
                     )}
                   </div>
-                  {!crm.stepDone[idx] && (idx === 0 || crm.stepDone[idx - 1]) && (
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {step.hint}
-                    </p>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Hint */}
             <div className="mt-3 rounded-[var(--radius)] border border-warning/40 bg-warning/10 p-2.5 text-xs">
               <span className="font-semibold text-warning">Dica: </span>
               {crm.stepDone.every(Boolean)
-                ? "Todas as etapas concluídas — adicione observações e avance."
-                : "Complete cada etapa na ordem: 1ª Ligação (operadora) → 2ª Ligação (WhatsApp)."}
+                ? "Todas as etapas concluídas — avance para o próximo lead."
+                : "Complete cada etapa na ordem: 1ª Ligação (operadora) → 2ª Ligação (WhatsApp) → 3ª Mensagem WhatsApp."}
             </div>
 
-            {/* Script modal trigger */}
+            {/* Script modal trigger + Next lead button */}
             <div className="mt-3 flex gap-2">
               <CallScriptModal />
               <Button

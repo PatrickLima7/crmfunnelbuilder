@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { generateLead, insightFor, STEPS, type Lead, type StepKey } from "./crm-data";
+import { generateLead, insightFor, STEPS, type Lead, type LeadStatus, type StepKey } from "./crm-data";
 import { type CallOutcome, OUTCOME_TEMPERATURE } from "./call-script";
 import { supabase } from "./supabase";
 import { LEADS_QUERY_KEY } from "@/hooks/useLeads";
@@ -91,8 +91,8 @@ interface CrmValue {
   pause: { reason: string; startedAt: number; eventId?: string } | null;
   startPause: (reason: string) => Promise<void>;
   endPause: () => Promise<void>;
-  answered: () => void;
-  notAnswered: () => Promise<void>;
+  answered: (stepIdx: number) => void;
+  notAnswered: (stepIdx: number) => Promise<void>;
   whatsappSent: () => Promise<void>;
   completeStep: (stepIndex: number) => void;
   nextLead: () => void;
@@ -118,8 +118,9 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
   const [conversions, setConversions] = useState(0);
   const [conversations, setConversations] = useState(0);
   const [negotiations, setNegotiations] = useState(0);
-  const [lead, setLead] = useState<CrmValue['lead']>(() => generateLead());
-  const [loadingLead, setLoadingLead] = useState(false);
+  // null = no real lead in queue
+  const [lead, setLead] = useState<CrmValue['lead'] | null>(null);
+  const [loadingLead, setLoadingLead] = useState(true); // starts loading
   const [stepIndex, setStepIndex] = useState(0);
   const [stepDone, setStepDone] = useState([false, false, false]);
   const [stepStart, setStepStart] = useState(() => Date.now());
@@ -135,7 +136,8 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
   const sessionIdRef = useRef<string | null>(null);
   const talkSecondsRef = useRef(0);
   const pauseSecondsRef = useRef(0);
-  const fnsRef = useRef<{ endPause?: () => Promise<void>; nextLead?: () => void }>({});
+  const activeStepIdxRef = useRef<number>(0); // which step triggered the current call
+  const fnsRef = useRef<{ endPause?: () => Promise<void>; nextLead?: () => void }>({}); 
 
   // Load today's session id
   useEffect(() => {
@@ -156,7 +158,8 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
         .from("leads")
         .select("*")
         .eq("assigned_to", operatorId)
-        .eq("status", "pending")
+        .in("status", ["pending", "contacted"])
+        .order("callback_at", { ascending: true, nullsFirst: true })
         .order("created_at", { ascending: true })
         .limit(1);
 
@@ -166,10 +169,10 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
           id: `lead-${target.id}`,
           realId: target.id,
           name: target.name,
-          phone: target.phone ?? "(11) 99999-9999",
+          phone: target.phone ?? "",
           profession: target.profession ?? "Cliente cadastrado",
           isNew: false,
-          status: (target.temperature ?? "morno") as import("./crm-data").LeadStatus,
+          status: (target.temperature ?? "morno") as LeadStatus,
           returnTime: "10:00",
           email: target.email,
           company: target.company,
@@ -182,7 +185,10 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
           midia: target.midia,
           campanha: target.campanha,
         });
+      } else {
+        setLead(null);
       }
+      setLoadingLead(false);
     }
     loadFirstLead();
   }, [operatorId]);
@@ -311,6 +317,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
     }
 
     if (pause) return;
+    if (!lead) return; // no lead, no alerts
     if (stepSeconds > STEP_ALERT_SECONDS) {
       pushAlert(`step-${lead.id}-${stepIndex}`, `Você está há mais de 5 min na ligação.`);
     }
@@ -326,7 +333,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
 
   useEffect(() => {
     if (callOpen && callSeconds > LONG_CALL_SECONDS) {
-      if (!firedAlerts.current[`call-${lead.id}`]) {
+      if (lead && !firedAlerts.current[`call-${lead.id}`]) {
         firedAlerts.current[`call-${lead.id}`] = true;
         toast("Boa ligação! ⏱️", { description: "Já são mais de 10 minutos de conversa." });
       }
@@ -357,7 +364,15 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
     insight,
     progress,
     history,
-    lead,
+    lead: lead ?? {
+      id: "empty",
+      name: "Nenhum lead disponível",
+      phone: "",
+      profession: "",
+      isNew: false,
+      status: "morno" as LeadStatus,
+      returnTime: "",
+    },
     loadingLead,
     stepIndex,
     stepDone,
@@ -416,17 +431,34 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
     },
 
     whatsappSent: async () => {
-      setStepDone((d) => d.map((v, i) => (i === 1 ? true : v)));
+      // step 2 = whatsapp_message (idx 2) — mark done and record event
+      setStepDone((d) => d.map((v, i) => (i === 2 ? true : v)));
       completedAt.current = Date.now();
-      toast.success("WhatsApp enviado!");
+      toast.success("✅ Mensagem WhatsApp registrada!");
+      if (lead) {
+        await supabase.from("contact_events").insert({
+          operator_id: operatorId,
+          session_id: sessionIdRef.current,
+          lead_name: lead.name,
+          lead_phone: lead.phone,
+          contact_type: "whatsapp_message",
+          outcome: "sem_resposta",
+          started_at: new Date().toISOString(),
+        });
+        const newContacts = contacts + 1;
+        setContacts(newContacts);
+        await pushPresence(operatorId, { state: "ocioso", contacts_today: newContacts });
+      }
     },
 
-    answered: () => {
+    // stepIdx = index of the step (0=call_phone, 1=call_whatsapp)
+    answered: (stepIdx: number) => {
+      activeStepIdxRef.current = stepIdx;
       setConversations((c) => c + 1);
       setNegotiations((n) => n + 1);
       setCallStart(Date.now());
       setCallOpen(true);
-      void pushPresence(operatorId, { state: "ligacao", current_lead: lead.name });
+      void pushPresence(operatorId, { state: "ligacao", current_lead: lead?.name ?? null });
     },
 
     // callbackAt = ISO string of chosen datetime; motivoDesinteresse = optional reason for sem_interesse
@@ -434,7 +466,9 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       const ended = new Date().toISOString();
       setCallOpen(false);
       setCallStart(null);
-      advance("call_phone");
+      // Advance the step that triggered this call (0=call_phone, 1=call_whatsapp)
+      const stepKey = STEPS[activeStepIdxRef.current]?.key ?? "call_phone";
+      advance(stepKey as StepKey);
 
       const newContacts = contacts + 1;
       setContacts(newContacts);
@@ -448,6 +482,8 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
         outcome === "convertido" ? "converted" :
         ["sem_interesse", "numero_invalido"].includes(outcome) ? "inactive" :
         "contacted";
+
+      if (!lead) return; // safety guard
 
       // Toast feedback
       if (outcome === "convertido") {
@@ -501,7 +537,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
         session_id: sessionIdRef.current,
         lead_name: lead.name,
         lead_phone: lead.phone,
-        contact_type: "call",
+        contact_type: activeStepIdxRef.current === 1 ? "whatsapp" : "call",
         outcome: outcome as any,
         ...(motivoDesinteresse ? { motivo_desinteresse: motivoDesinteresse } : {}),
         started_at: callStart ? new Date(callStart).toISOString() : new Date().toISOString(),
@@ -524,13 +560,16 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       qc.invalidateQueries({ queryKey: [...LEADS_QUERY_KEY, operatorId] });
     },
 
-    notAnswered: async () => {
+    // stepIdx = index of the step (0=call_phone, 1=call_whatsapp)
+    notAnswered: async (stepIdx: number) => {
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
-      toast.warning("Sem atendimento — retorno agendado para amanhã.");
-      advance("call_phone");
+      const stepKey = STEPS[stepIdx]?.key ?? "call_phone";
+      const label = stepIdx === 1 ? "WhatsApp" : "ligação telefônica";
+      toast.warning(`Sem atendimento na ${label} — retorno agendado para amanhã.`);
+      advance(stepKey as StepKey);
 
-      if (lead.realId) {
+      if (lead?.realId) {
         await supabase
           .from("leads")
           .update({
@@ -545,9 +584,9 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       await supabase.from("contact_events").insert({
         operator_id: operatorId,
         session_id: sessionIdRef.current,
-        lead_name: lead.name,
-        lead_phone: lead.phone,
-        contact_type: "call",
+        lead_name: lead?.name ?? "",
+        lead_phone: lead?.phone ?? "",
+        contact_type: stepIdx === 1 ? "whatsapp" : "call",
         outcome: "sem_resposta",
         started_at: new Date().toISOString(),
       });
@@ -601,7 +640,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
         .from("leads")
         .select("*")
         .eq("assigned_to", operatorId)
-        .eq("status", "pending")
+        .in("status", ["pending", "contacted"])
         .order("callback_at", { ascending: true, nullsFirst: true })
         .order("created_at", { ascending: true })
         .limit(1);
@@ -612,10 +651,10 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
           id: `lead-${target.id}`,
           realId: target.id,
           name: target.name,
-          phone: target.phone ?? "(11) 99999-9999",
+          phone: target.phone ?? "",
           profession: target.profession ?? "Cliente cadastrado",
           isNew: false,
-          status: (target.temperature ?? "morno") as import("./crm-data").LeadStatus,
+          status: (target.temperature ?? "morno") as LeadStatus,
           returnTime: "10:00",
           email: target.email,
           company: target.company,
@@ -629,8 +668,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
           campanha: target.campanha,
         });
       } else {
-        const fresh = generateLead();
-        setLead(fresh);
+        setLead(null); // empty queue — no fake lead
       }
       setStepIndex(0);
       setStepDone([false, false, false]);
