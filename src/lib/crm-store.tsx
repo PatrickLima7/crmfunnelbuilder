@@ -101,7 +101,7 @@ interface CrmValue {
   goalReached: boolean;
   callOpen: boolean;
   callSeconds: number;
-  finishCall: (outcome: CallOutcome, callbackAt?: string) => Promise<void>;
+  finishCall: (outcome: CallOutcome, callbackAt?: string, motivoDesinteresse?: string) => Promise<void>;
   opportunities: number;
   returns: number;
   hotLeads: number;
@@ -121,7 +121,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
   const [lead, setLead] = useState<CrmValue['lead']>(() => generateLead());
   const [loadingLead, setLoadingLead] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
-  const [stepDone, setStepDone] = useState([false, false]);
+  const [stepDone, setStepDone] = useState([false, false, false]);
   const [stepStart, setStepStart] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
   
@@ -429,8 +429,8 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       void pushPresence(operatorId, { state: "ligacao", current_lead: lead.name });
     },
 
-    // callbackAt = ISO string of chosen datetime (for "retorno" outcome)
-    finishCall: async (outcome, callbackAt) => {
+    // callbackAt = ISO string of chosen datetime; motivoDesinteresse = optional reason for sem_interesse
+    finishCall: async (outcome, callbackAt, motivoDesinteresse) => {
       const ended = new Date().toISOString();
       setCallOpen(false);
       setCallStart(null);
@@ -440,37 +440,32 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       setContacts(newContacts);
 
       let newConversions = conversions;
-      let callbackDateIso: string | null = callbackAt ?? null;
-
-      // Auto-schedule callback for outcomes that didn't provide a date
-      if (!callbackDateIso) {
-        if (outcome === "pensar") {
-          const d = new Date(); d.setDate(d.getDate() + 3);
-          callbackDateIso = d.toISOString();
-        } else if (outcome === "sem_resposta") {
-          const d = new Date(); d.setDate(d.getDate() + 1);
-          callbackDateIso = d.toISOString();
-        }
-      }
+      const callbackDateIso: string | null = callbackAt ?? null;
 
       // Map outcome → temperature and status
       const temperature = OUTCOME_TEMPERATURE[outcome];
       const newStatus =
-        ["convertido", "agendado"].includes(outcome) ? "converted" :
+        outcome === "convertido" ? "converted" :
         ["sem_interesse", "numero_invalido"].includes(outcome) ? "inactive" :
         "contacted";
 
-      if (["convertido", "agendado", "interessado"].includes(outcome)) {
+      // Toast feedback
+      if (outcome === "convertido") {
         setConversions((c) => { newConversions = c + 1; return c + 1; });
-        toast.success("🎉 Cliente qualificado! Lead marcado como Quente.");
-      } else if (outcome === "pensar" || outcome === "em_nutricao") {
-        toast.info("Lead marcado como Morno.");
+        toast.success("🎉 Cliente convertido! Registro de conversão criado.");
+      } else if (outcome === "interessado") {
+        setConversions((c) => { newConversions = c + 1; return c + 1; });
+        toast.success("🎯 Lead interessado! Marcado como Quente e agendado.");
+      } else if (outcome === "pensar") {
+        toast.info("Lead indeciso — marcado como Morno e agendado.");
       } else if (outcome === "retorno") {
-        toast.info("Retorno agendado com sucesso!");
+        toast.info("Retorno agendado com sucesso! Lead marcado como Morno.");
+      } else if (outcome === "desligou") {
+        toast.warning("Lead desligou — marcado como Frio e agendado.");
       } else if (outcome === "sem_resposta") {
         toast.warning("Sem resposta — retorno agendado para amanhã.");
       } else if (outcome === "sem_interesse") {
-        toast("Lead marcado como Frio — inativo.");
+        toast("Lead sem interesse — marcado como Frio.");
       } else {
         toast.warning("Lead marcado como inválido/frio.");
       }
@@ -486,6 +481,19 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
             updated_at: ended,
           })
           .eq("id", lead.realId);
+
+        // For convertido: insert conversion record (silently ignore if table missing)
+        if (outcome === "convertido") {
+          try {
+            await supabase.from("conversions" as any).insert({
+              lead_id: lead.realId,
+              operator_id: operatorId,
+              converted_at: ended,
+            });
+          } catch {
+            // conversions table may not exist yet — silently ignore
+          }
+        }
       }
 
       await supabase.from("contact_events").insert({
@@ -495,6 +503,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
         lead_phone: lead.phone,
         contact_type: "call",
         outcome: outcome as any,
+        ...(motivoDesinteresse ? { motivo_desinteresse: motivoDesinteresse } : {}),
         started_at: callStart ? new Date(callStart).toISOString() : new Date().toISOString(),
         ended_at: ended,
       });
@@ -573,7 +582,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
           campanha: (target as any).campanha,
         });
         setStepIndex(0);
-        setStepDone([false, false]);
+        setStepDone([false, false, false]);
         setStepStart(Date.now());
         completedAt.current = null;
         setAlerts([]);
@@ -593,6 +602,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
         .select("*")
         .eq("assigned_to", operatorId)
         .eq("status", "pending")
+        .order("callback_at", { ascending: true, nullsFirst: true })
         .order("created_at", { ascending: true })
         .limit(1);
 
@@ -623,7 +633,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
         setLead(fresh);
       }
       setStepIndex(0);
-      setStepDone([false, false]);
+      setStepDone([false, false, false]);
       setStepStart(Date.now());
       completedAt.current = null;
       setAlerts([]);

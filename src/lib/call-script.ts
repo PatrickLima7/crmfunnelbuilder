@@ -67,69 +67,71 @@ export const SCRIPT_STEPS: ScriptStep[] = [
 export const CALL_OUTCOMES = [
   {
     key: "convertido",
-    label: "✅ Convertido",
-    hint: "Cliente fechou negócio",
-    temperature: "quente" as const,
-  },
-  {
-    key: "agendado",
-    label: "📅 Agendado",
-    hint: "Visita ou reunião agendada",
+    label: "✅ Lead convertido",
+    hint: "Cliente fechou negócio — gera registro de conversão",
     temperature: "quente" as const,
   },
   {
     key: "interessado",
-    label: "🎯 Interessado",
-    hint: "Demonstrou interesse real",
+    label: "🎯 Lead interessado",
+    hint: "Demonstrou interesse real — reagendar como Quente",
     temperature: "quente" as const,
   },
   {
-    key: "retorno",
-    label: "🔄 Agendar retorno",
-    hint: "Escolha data e hora para retornar",
-    temperature: "morno" as const,
-  },
-  {
     key: "pensar",
-    label: "🤔 Vai pensar",
-    hint: "Precisa de tempo para decidir",
+    label: "🤔 Lead indeciso",
+    hint: "Precisa de tempo para decidir — reagendar como Morno",
     temperature: "morno" as const,
   },
   {
-    key: "em_nutricao",
-    label: "🌱 Em nutrição",
-    hint: "Lead entrou em fluxo de automação",
+    key: "retorno",
+    label: "🔄 Lead reagendar retorno",
+    hint: "Solicita retorno em data específica — reagendar como Morno",
     temperature: "morno" as const,
   },
   {
-    key: "sem_interesse",
-    label: "❌ Sem interesse",
-    hint: "Motivo obrigatório",
+    key: "desligou",
+    label: "📵 Lead desligou",
+    hint: "Desligou durante a ligação — reagendar como Frio",
     temperature: "frio" as const,
   },
   {
-    key: "numero_invalido",
-    label: "⚠️ Número inválido",
-    hint: "Telefone incorreto ou inexistente",
+    key: "sem_interesse",
+    label: "❌ Lead sem interesse",
+    hint: "Motivo obrigatório — não agenda retorno",
     temperature: "frio" as const,
   },
 ] as const;
 
+/** Motivos obrigatórios quando outcome = sem_interesse */
+export const SEM_INTERESSE_MOTIVOS = [
+  "Lead está muito longe",
+  "Lead desistiu do curso",
+  "Lead disse que mudou de ideia",
+  "Lead disse que realmente não quer mais fazer o curso",
+  "Unidade não tem o curso que a pessoa quer",
+  "Lead disse já ter feito o curso",
+] as const;
+
+export type SemInteresseMotivo = (typeof SEM_INTERESSE_MOTIVOS)[number];
+
 export type CallOutcome =
   | (typeof CALL_OUTCOMES)[number]["key"]
-  | "sem_resposta";
+  | "sem_resposta"
+  | "em_nutricao"
+  | "numero_invalido";
 
 // Temperature mapping for each outcome
 export const OUTCOME_TEMPERATURE: Record<CallOutcome, "quente" | "morno" | "frio"> = {
   convertido:      "quente",
-  agendado:        "quente",
   interessado:     "quente",
-  retorno:         "morno",
   pensar:          "morno",
-  em_nutricao:     "morno",
+  retorno:         "morno",
+  desligou:        "frio",
   sem_interesse:   "frio",
-  numero_invalido: "frio",
   sem_resposta:    "frio",
+  em_nutricao:     "morno",
+  numero_invalido: "frio",
 };
 
 export const QUICK_MESSAGES = [

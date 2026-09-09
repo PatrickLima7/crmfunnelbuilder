@@ -170,40 +170,9 @@ export function LeadPanel({ operator }: { operator: string }) {
                   {formatClock(crm.callSeconds)}
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  size="sm"
-                  variant="success"
-                  className="w-full"
-                  onClick={() => crm.finishCall("convertido")}
-                >
-                  ✅ Convertido
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="w-full"
-                  onClick={() => crm.finishCall("agendado")}
-                >
-                  📅 Agendado
-                </Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  className="w-full"
-                  onClick={() => crm.finishCall("sem_interesse")}
-                >
-                  ✗ Sem interesse
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="w-full"
-                  onClick={() => crm.finishCall("pensar")}
-                >
-                  🤔 Vai pensar
-                </Button>
-              </div>
+              <p className="text-xs text-muted-foreground">
+                Use o script de ligação aberto para registrar o desfecho e encerrar a ligação.
+              </p>
             </div>
           )}
         </div>

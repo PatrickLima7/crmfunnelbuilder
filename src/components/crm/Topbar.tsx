@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { AlertTriangle, Bell, Coffee, Flame, LogOut, UserPlus } from "lucide-react";
+import { AlertTriangle, Bell, Coffee, Flame, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -10,17 +10,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { formatClock } from "@/lib/crm-data";
 import { useCrm } from "@/lib/crm-store";
 import { supabase } from "@/lib/supabase";
@@ -31,9 +20,6 @@ export function Topbar({ operator }: { operator: string }) {
   const navigate = useNavigate();
   const { data: pauseTypes = [] } = useActivePauseTypes();
   const [clock, setClock] = useState("--:--:--");
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
 
   useEffect(() => {
     const tick = () => setClock(new Date().toLocaleTimeString("pt-BR"));
@@ -88,43 +74,6 @@ export function Topbar({ operator }: { operator: string }) {
       )}
 
       <div className="ml-auto flex flex-wrap items-center gap-2">
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button variant="info" size="sm">
-              <UserPlus /> Cadastrar lead
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Cadastrar lead</DialogTitle>
-              <DialogDescription>O lead entra no fim da fila de oportunidades.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="lead-name">Nome</Label>
-                <Input id="lead-name" value={name} onChange={(e) => setName(e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="lead-phone">Telefone</Label>
-                <Input id="lead-phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                disabled={!name.trim() || !phone.trim()}
-                onClick={() => {
-                  crm.registerLead(name.trim(), phone.trim());
-                  setName("");
-                  setPhone("");
-                  setOpen(false);
-                }}
-              >
-                Salvar lead
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="warning" size="sm">

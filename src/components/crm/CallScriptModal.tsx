@@ -15,7 +15,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { useCrm } from "@/lib/crm-store";
 import { useScript } from "@/hooks/useScript";
-import { CALL_OUTCOMES, SCRIPT_STEPS as FALLBACK_STEPS, type CallOutcome } from "@/lib/call-script";
+import { CALL_OUTCOMES, SCRIPT_STEPS as FALLBACK_STEPS, SEM_INTERESSE_MOTIVOS, type CallOutcome, type SemInteresseMotivo } from "@/lib/call-script";
 import { formatClock } from "@/lib/crm-data";
 
 export function CallScriptModal() {
@@ -38,7 +38,7 @@ export function CallScriptModal() {
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [asking, setAsking] = useState(false);
   const [outcome, setOutcome] = useState<CallOutcome | null>(null);
-  const [callbackDays, setCallbackDays] = useState<number>(3);
+  const [semInteresseMotivo, setSemInteresseMotivo] = useState<SemInteresseMotivo | null>(null);
   const [returnDate, setReturnDate] = useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
@@ -58,7 +58,7 @@ export function CallScriptModal() {
     setChecked({});
     setAsking(false);
     setOutcome(null);
-    setCallbackDays(3);
+    setSemInteresseMotivo(null);
     const d = new Date();
     d.setDate(d.getDate() + 1);
     setReturnDate(d.toISOString().split("T")[0]!);
@@ -66,12 +66,28 @@ export function CallScriptModal() {
     setRetornoError(null);
   };
 
+  // Outcomes that require a scheduling date/time (all except convertido and sem_interesse)
+  const needsScheduling = outcome !== null && outcome !== "convertido" && outcome !== "sem_interesse";
+
   const validateAndFinish = async () => {
     if (!outcome) return;
 
+    // sem_interesse: motivo obrigatório, sem agendamento
+    if (outcome === "sem_interesse") {
+      if (!semInteresseMotivo) {
+        setRetornoError("Selecione o motivo do desinteresse para continuar.");
+        return;
+      }
+      setRetornoError(null);
+      await crm.finishCall(outcome, undefined, semInteresseMotivo);
+      reset();
+      return;
+    }
+
     let callbackIso: string | undefined = undefined;
 
-    if (outcome !== "em_nutricao" && outcome !== "convertido") {
+    // All outcomes except convertido and sem_interesse need optional/required scheduling
+    if (needsScheduling) {
       if (returnDate && returnTime) {
         const selected = new Date(`${returnDate}T${returnTime}`);
         if (selected < new Date()) {
@@ -232,18 +248,23 @@ export function CallScriptModal() {
         {/* ── Conclusion Overlay ── */}
         {asking && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/90 backdrop-blur-sm p-4">
-            <div className="w-full max-w-md rounded-2xl border border-border bg-panel p-6 shadow-2xl space-y-4">
+            <div className="w-full max-w-md rounded-2xl border border-border bg-panel p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
               <div>
                 <h3 className="text-lg font-bold">Qual foi o resultado da ligação?</h3>
                 <p className="text-xs text-muted-foreground">Selecione o desfecho para registrar no relatório do dia.</p>
               </div>
 
+              {/* Outcome selection */}
               <div className="space-y-2">
                 {CALL_OUTCOMES.map((o) => (
                   <button
                     key={o.key}
                     type="button"
-                    onClick={() => setOutcome(o.key)}
+                    onClick={() => {
+                      setOutcome(o.key);
+                      setSemInteresseMotivo(null);
+                      setRetornoError(null);
+                    }}
                     className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-colors ${
                       outcome === o.key ? "border-primary bg-primary/10 text-primary font-semibold" : "border-border hover:bg-muted"
                     }`}
@@ -261,9 +282,43 @@ export function CallScriptModal() {
                 ))}
               </div>
 
-              {outcome && outcome !== "em_nutricao" && outcome !== "convertido" && (
+              {/* sem_interesse: motivo obrigatório — não aparece agendamento */}
+              {outcome === "sem_interesse" && (
+                <div className="space-y-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+                  <p className="text-xs font-bold text-destructive">❌ Selecione o motivo do desinteresse (obrigatório):</p>
+                  <div className="space-y-1">
+                    {SEM_INTERESSE_MOTIVOS.map((motivo) => (
+                      <button
+                        key={motivo}
+                        type="button"
+                        onClick={() => { setSemInteresseMotivo(motivo); setRetornoError(null); }}
+                        className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs transition-colors ${
+                          semInteresseMotivo === motivo
+                            ? "border-destructive bg-destructive/10 font-semibold text-destructive"
+                            : "border-border hover:bg-muted"
+                        }`}
+                      >
+                        {semInteresseMotivo === motivo ? (
+                          <CheckCircle2 className="size-3.5 shrink-0 text-destructive" />
+                        ) : (
+                          <Circle className="size-3.5 shrink-0 text-muted-foreground" />
+                        )}
+                        {motivo}
+                      </button>
+                    ))}
+                  </div>
+                  {retornoError && (
+                    <p className="text-xs font-bold text-destructive">{retornoError}</p>
+                  )}
+                </div>
+              )}
+
+              {/* All other outcomes except convertido: data/hora de retorno */}
+              {needsScheduling && (
                 <div className="space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
-                  <p className="text-xs font-bold text-primary">📅 Definir data e hora do retorno {outcome === "retorno" ? "(obrigatório)" : "(opcional)"}:</p>
+                  <p className="text-xs font-bold text-primary">
+                    📅 Definir data e hora do retorno {outcome === "retorno" ? "(obrigatório)" : "(opcional)"}:
+                  </p>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-[10px] font-semibold text-muted-foreground uppercase">Data</label>
@@ -290,28 +345,6 @@ export function CallScriptModal() {
                 </div>
               )}
 
-              {outcome === "pensar" && (
-                <div className="space-y-1.5 rounded-xl border border-warning/30 bg-warning/10 p-3">
-                  <label className="block text-xs font-bold text-warning-foreground">
-                    📅 Agendar retorno para daqui a quantos dias?
-                  </label>
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {[1, 2, 3, 7].map((d) => (
-                      <button
-                        key={d}
-                        type="button"
-                        onClick={() => setCallbackDays(d)}
-                        className={`rounded-lg py-1 text-xs font-bold transition-all ${
-                          callbackDays === d ? "bg-warning text-warning-foreground shadow" : "bg-panel text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        {d} {d === 1 ? "dia" : "dias"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               <div className="flex gap-2 pt-2">
                 <Button variant="secondary" className="flex-1" onClick={() => setAsking(false)}>
                   Voltar à ligação
@@ -319,7 +352,10 @@ export function CallScriptModal() {
                 <Button
                   variant="destructive"
                   className="flex-1"
-                  disabled={!outcome}
+                  disabled={
+                    !outcome ||
+                    (outcome === "sem_interesse" && !semInteresseMotivo)
+                  }
                   onClick={() => void validateAndFinish()}
                 >
                   Encerrar ligação
