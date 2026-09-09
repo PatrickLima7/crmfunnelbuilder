@@ -19,6 +19,13 @@ export type LeadInput = {
   origin?: string;
   notes?: string;
   callback_at?: string;
+  // New Sprint 3 fields
+  midia?: string;
+  campanha?: string;
+  curso?: string;
+  data_nascimento?: string;
+  genero?: string;
+  cep?: string;
 };
 
 /** Fetch all leads assigned to this operator */
@@ -43,6 +50,13 @@ export function useCreateLead(operatorId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (lead: LeadInput) => {
+      const now = new Date().toISOString();
+      const initialHistory = [{
+        ts: now,
+        acao: "cadastro",
+        detalhes: `Lead cadastrado via ${lead.origin ?? 'manual'}`
+      }];
+      
       const { data, error } = await supabase
         .from("leads")
         .insert({
@@ -61,6 +75,15 @@ export function useCreateLead(operatorId: string) {
           assigned_to: operatorId,
           notes: lead.notes || null,
           callback_at: lead.callback_at || null,
+          midia: lead.midia || null,
+          campanha: lead.campanha || null,
+          curso: lead.curso || null,
+          data_nascimento: lead.data_nascimento || null,
+          genero: lead.genero || null,
+          cep: lead.cep || null,
+          historico: initialHistory,
+          data_primeiro_cadastro: now,
+          data_ultimo_cadastro: now,
         })
         .select()
         .single();
@@ -98,6 +121,15 @@ export function useImportLeads(operatorId: string) {
         assigned_to: operatorId,
         notes: l.notes || null,
         callback_at: l.callback_at || null,
+        midia: l.midia || null,
+        campanha: l.campanha || null,
+        curso: l.curso || null,
+        data_nascimento: l.data_nascimento || null,
+        genero: l.genero || null,
+        cep: l.cep || null,
+        historico: [{ ts: new Date().toISOString(), acao: "importacao_csv", detalhes: "Importado via CSV" }],
+        data_primeiro_cadastro: new Date().toISOString(),
+        data_ultimo_cadastro: new Date().toISOString(),
       }));
 
       // Insert in batches of 100 to avoid payload limits
@@ -140,9 +172,29 @@ export function useUpdateLead(operatorId: string) {
       id: string;
       updates: Partial<Lead>;
     }) => {
+      // First fetch existing historico
+      const { data: existing } = await supabase
+        .from("leads")
+        .select("historico")
+        .eq("id", id)
+        .single();
+      
+      const currentHistory = (existing?.historico as Array<{ts: string; acao: string; detalhes?: string}>) ?? [];
+      const newEntry = {
+        ts: new Date().toISOString(),
+        acao: "atualizacao",
+        detalhes: Object.keys(updates).filter(k => k !== 'updated_at' && k !== 'historico').join(', ')
+      };
+      
+      const { id: _, created_at: __, data_primeiro_cadastro: ___, data_ultimo_cadastro: ____, ...cleanUpdates } = updates as any;
       const { error } = await supabase
         .from("leads")
-        .update({ ...updates, updated_at: new Date().toISOString() })
+        .update({
+          ...cleanUpdates,
+          historico: [...currentHistory, newEntry],
+          data_ultimo_contato: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", id)
         .eq("assigned_to", operatorId);
       if (error) throw error;

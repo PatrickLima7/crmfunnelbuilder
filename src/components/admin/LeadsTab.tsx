@@ -15,6 +15,7 @@ export function LeadsTab() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [selectedOp, setSelectedOp] = useState<string>("all");
+  const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [openImport, setOpenImport] = useState(false);
 
   // Fetch all leads
@@ -54,7 +55,8 @@ export function LeadsTab() {
       l.name.toLowerCase().includes(search.toLowerCase()) ||
       (l.phone ?? "").includes(search) ||
       (l.company ?? "").toLowerCase().includes(search.toLowerCase());
-    return matchOp && matchSearch;
+    const matchStatus = selectedStatus === "all" || l.status === selectedStatus;
+    return matchOp && matchSearch && matchStatus;
   });
 
   // Bulk delete leads
@@ -193,6 +195,19 @@ export function LeadsTab() {
                 ))}
               </SelectContent>
             </Select>
+            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+              <SelectTrigger className="h-8 w-36 text-xs">
+                <SelectValue placeholder="Filtrar por status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os status</SelectItem>
+                <SelectItem value="pending">Pendente</SelectItem>
+                <SelectItem value="contacted">Contatado</SelectItem>
+                <SelectItem value="converted">Convertido</SelectItem>
+                <SelectItem value="inactive">Inativo</SelectItem>
+                <SelectItem value="em_nutricao">Em Nutrição</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <p className="text-xs text-muted-foreground">
@@ -207,6 +222,8 @@ export function LeadsTab() {
               <tr>
                 <th className="px-3 py-2">Nome / Empresa</th>
                 <th className="px-3 py-2">Telefone</th>
+                <th className="px-3 py-2">Mídia</th>
+                <th className="px-3 py-2">Curso</th>
                 <th className="px-3 py-2">Origem</th>
                 <th className="px-3 py-2">Temperatura</th>
                 <th className="px-3 py-2">Vendedor responsável</th>
@@ -216,25 +233,27 @@ export function LeadsTab() {
             <tbody className="divide-y divide-border">
               {loadingLeads && (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-muted-foreground">
+                  <td colSpan={8} className="py-8 text-center text-muted-foreground">
                     Carregando leads…
                   </td>
                 </tr>
               )}
               {!loadingLeads && filteredLeads.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-muted-foreground">
+                  <td colSpan={8} className="py-8 text-center text-muted-foreground">
                     Nenhum lead encontrado.
                   </td>
                 </tr>
               )}
-              {filteredLeads.map((l) => (
+              {filteredLeads.map((l: any) => (
                 <tr key={l.id} className="hover:bg-muted/30">
                   <td className="px-3 py-2.5">
                     <p className="font-semibold">{l.name}</p>
                     {l.company && <p className="text-[10px] text-muted-foreground">{l.company}</p>}
                   </td>
                   <td className="px-3 py-2.5 font-mono text-[11px]">{l.phone ?? "—"}</td>
+                  <td className="px-3 py-2 text-[11px]">{l.midia ?? "—"}</td>
+                  <td className="px-3 py-2 text-[11px]">{l.curso ?? "—"}</td>
                   <td className="px-3 py-2.5">{l.origin ?? "csv"}</td>
                   <td className="px-3 py-2.5">
                     <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-bold ${
@@ -254,9 +273,10 @@ export function LeadsTab() {
                     <span className={`rounded px-1.5 py-0.5 text-[10px] ${
                       l.status === "converted" ? "bg-success/15 text-success" :
                       l.status === "contacted" ? "bg-info/15 text-info" :
+                      l.status === "em_nutricao" ? "bg-primary/15 text-primary" :
                       "bg-muted text-muted-foreground"
                     }`}>
-                      {l.status}
+                      {l.status === "em_nutricao" ? "Em Nutrição" : l.status}
                     </span>
                   </td>
                 </tr>

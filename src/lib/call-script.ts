@@ -66,39 +66,57 @@ export const SCRIPT_STEPS: ScriptStep[] = [
 
 export const CALL_OUTCOMES = [
   {
-    key: "interessado",
-    label: "✅ Cliente interessado",
-    hint: "Lead classificado como Quente",
+    key: "convertido",
+    label: "✅ Convertido",
+    hint: "Cliente fechou negócio",
     temperature: "quente" as const,
   },
   {
-    key: "pensar",
-    label: "🤔 Precisa pensar",
-    hint: "Lead classificado como Morno — agendar retorno",
-    temperature: "morno" as const,
+    key: "agendado",
+    label: "📅 Agendado",
+    hint: "Visita ou reunião agendada",
+    temperature: "quente" as const,
+  },
+  {
+    key: "interessado",
+    label: "🎯 Interessado",
+    hint: "Demonstrou interesse real",
+    temperature: "quente" as const,
   },
   {
     key: "retorno",
-    label: "📅 Agendar retorno",
-    hint: "Escolha data e hora — máximo 7 dias",
+    label: "🔄 Agendar retorno",
+    hint: "Escolha data e hora para retornar",
     temperature: "morno" as const,
+  },
+  {
+    key: "pensar",
+    label: "🤔 Vai pensar",
+    hint: "Precisa de tempo para decidir",
+    temperature: "morno" as const,
+  },
+  {
+    key: "em_nutricao",
+    label: "🌱 Em nutrição",
+    hint: "Lead entrou em fluxo de automação",
+    temperature: "morno" as const,
+  },
+  {
+    key: "sem_interesse",
+    label: "❌ Sem interesse",
+    hint: "Motivo obrigatório",
+    temperature: "frio" as const,
+  },
+  {
+    key: "numero_invalido",
+    label: "⚠️ Número inválido",
+    hint: "Telefone incorreto ou inexistente",
+    temperature: "frio" as const,
   },
   {
     key: "sem_resposta",
     label: "📵 Não atendeu",
-    hint: "Lead classificado como Frio — retorno automático amanhã",
-    temperature: "frio" as const,
-  },
-  {
-    key: "nao",
-    label: "❌ Não tem interesse",
-    hint: "Lead classificado como Frio — inativo",
-    temperature: "frio" as const,
-  },
-  {
-    key: "errado",
-    label: "⚠️ Contato errado",
-    hint: "Número incorreto — lead para revisão",
+    hint: "Retorno automático amanhã",
     temperature: "frio" as const,
   },
 ] as const;
@@ -107,12 +125,15 @@ export type CallOutcome = (typeof CALL_OUTCOMES)[number]["key"];
 
 // Temperature mapping for each outcome
 export const OUTCOME_TEMPERATURE: Record<CallOutcome, "quente" | "morno" | "frio"> = {
-  interessado:  "quente",
-  pensar:       "morno",
-  retorno:      "morno",
-  sem_resposta: "frio",
-  nao:          "frio",
-  errado:       "frio",
+  convertido:      "quente",
+  agendado:        "quente",
+  interessado:     "quente",
+  retorno:         "morno",
+  pensar:          "morno",
+  em_nutricao:     "morno",
+  sem_interesse:   "frio",
+  numero_invalido: "frio",
+  sem_resposta:    "frio",
 };
 
 export const QUICK_MESSAGES = [

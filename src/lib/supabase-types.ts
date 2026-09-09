@@ -14,15 +14,19 @@ export type Database = {
           role: "admin" | "operator";
           cpf: string | null;
           avatar_url: string | null;
+          active: boolean;
+          daily_contacts_goal: number | null;
           created_at: string;
           updated_at: string;
         };
         Insert: {
-          id: string;
+          id?: string;
           name: string;
           role?: "admin" | "operator";
           cpf?: string | null;
           avatar_url?: string | null;
+          active?: boolean;
+          daily_contacts_goal?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -31,8 +35,11 @@ export type Database = {
           role?: "admin" | "operator";
           cpf?: string | null;
           avatar_url?: string | null;
+          active?: boolean;
+          daily_contacts_goal?: number | null;
           updated_at?: string;
         };
+        Relationships: [];
       };
       goals: {
         Row: {
@@ -64,6 +71,7 @@ export type Database = {
           updated_by?: string | null;
           updated_at?: string;
         };
+        Relationships: [];
       };
       script_steps: {
         Row: {
@@ -92,6 +100,7 @@ export type Database = {
           note_label?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       operator_presence: {
         Row: {
@@ -128,6 +137,7 @@ export type Database = {
           pause_seconds?: number;
           updated_at?: string;
         };
+        Relationships: [];
       };
       work_sessions: {
         Row: {
@@ -147,6 +157,7 @@ export type Database = {
         Update: {
           ended_at?: string | null;
         };
+        Relationships: [];
       };
       pause_events: {
         Row: {
@@ -169,6 +180,7 @@ export type Database = {
         Update: {
           ended_at?: string | null;
         };
+        Relationships: [];
       };
       contact_events: {
         Row: {
@@ -178,7 +190,8 @@ export type Database = {
           lead_name: string | null;
           lead_phone: string | null;
           contact_type: "call" | "whatsapp";
-          outcome: "interessado" | "pensar" | "nao" | "sem_resposta" | "revisao" | null;
+          outcome: "interessado" | "pensar" | "nao" | "sem_resposta" | "revisao" | "retorno" | "errado" | "convertido" | "sem_interesse" | "numero_invalido" | "em_nutricao" | "agendado" | null;
+          motivo_desinteresse: string | null;
           started_at: string;
           ended_at: string | null;
           duration_seconds: number | null;
@@ -190,14 +203,17 @@ export type Database = {
           lead_name?: string | null;
           lead_phone?: string | null;
           contact_type: "call" | "whatsapp";
-          outcome?: "interessado" | "pensar" | "nao" | "sem_resposta" | "revisao" | null;
+          outcome?: "interessado" | "pensar" | "nao" | "sem_resposta" | "revisao" | "retorno" | "errado" | "convertido" | "sem_interesse" | "numero_invalido" | "em_nutricao" | "agendado" | null;
+          motivo_desinteresse?: string | null;
           started_at?: string;
           ended_at?: string | null;
         };
         Update: {
-          outcome?: "interessado" | "pensar" | "nao" | "sem_resposta" | "revisao" | null;
+          outcome?: "interessado" | "pensar" | "nao" | "sem_resposta" | "revisao" | "retorno" | "errado" | "convertido" | "sem_interesse" | "numero_invalido" | "em_nutricao" | "agendado" | null;
+          motivo_desinteresse?: string | null;
           ended_at?: string | null;
         };
+        Relationships: [];
       };
       leads: {
         Row: {
@@ -211,12 +227,22 @@ export type Database = {
           state: string | null;
           profession: string | null;
           company: string | null;
-          status: "pending" | "contacted" | "converted" | "inactive";
+          status: "pending" | "contacted" | "converted" | "inactive" | "em_nutricao";
           temperature: "quente" | "morno" | "frio";
           origin: string;
           assigned_to: string | null;
           notes: string | null;
           callback_at: string | null;
+          historico: Json | null;
+          midia: string | null;
+          campanha: string | null;
+          curso: string | null;
+          data_nascimento: string | null;
+          genero: string | null;
+          cep: string | null;
+          data_primeiro_cadastro: string;
+          data_ultimo_cadastro: string;
+          data_ultimo_contato: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -231,12 +257,24 @@ export type Database = {
           state?: string | null;
           profession?: string | null;
           company?: string | null;
-          status?: "pending" | "contacted" | "converted" | "inactive";
+          status?: "pending" | "contacted" | "converted" | "inactive" | "em_nutricao";
           temperature?: "quente" | "morno" | "frio";
           origin?: string;
           assigned_to?: string | null;
           notes?: string | null;
           callback_at?: string | null;
+          historico?: Json | null;
+          midia?: string | null;
+          campanha?: string | null;
+          curso?: string | null;
+          data_nascimento?: string | null;
+          genero?: string | null;
+          cep?: string | null;
+          data_primeiro_cadastro?: string;
+          data_ultimo_cadastro?: string;
+          data_ultimo_contato?: string | null;
+          created_at?: string;
+          updated_at?: string;
         };
         Update: {
           name?: string;
@@ -248,14 +286,23 @@ export type Database = {
           state?: string | null;
           profession?: string | null;
           company?: string | null;
-          status?: "pending" | "contacted" | "converted" | "inactive";
+          status?: "pending" | "contacted" | "converted" | "inactive" | "em_nutricao";
           temperature?: "quente" | "morno" | "frio";
           origin?: string;
           assigned_to?: string | null;
           notes?: string | null;
           callback_at?: string | null;
+          historico?: Json | null;
+          midia?: string | null;
+          campanha?: string | null;
+          curso?: string | null;
+          data_nascimento?: string | null;
+          genero?: string | null;
+          cep?: string | null;
+          data_ultimo_contato?: string | null;
           updated_at?: string;
         };
+        Relationships: [];
       };
       app_config: {
         Row: {
@@ -272,6 +319,54 @@ export type Database = {
           value?: Json;
           updated_at?: string;
         };
+        Relationships: [];
+      };
+      midias: {
+        Row: {
+          id: string;
+          nome: string;
+          ativo: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          nome: string;
+          ativo?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          nome?: string;
+          ativo?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      pause_config: {
+        Row: {
+          id: string;
+          nome: string;
+          max_minutes: number;
+          ativo: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          nome: string;
+          max_minutes?: number;
+          ativo?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          nome?: string;
+          max_minutes?: number;
+          ativo?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [];
       };
     };
     Views: Record<string, never>;
@@ -282,6 +377,7 @@ export type Database = {
       };
     };
     Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
   };
 };
 
@@ -295,3 +391,5 @@ export type PauseEvent = Database["public"]["Tables"]["pause_events"]["Row"];
 export type ContactEvent = Database["public"]["Tables"]["contact_events"]["Row"];
 export type Lead = Database["public"]["Tables"]["leads"]["Row"];
 export type AppConfig = Database["public"]["Tables"]["app_config"]["Row"];
+export type Midia = Database["public"]["Tables"]["midias"]["Row"];
+export type PauseConfig = Database["public"]["Tables"]["pause_config"]["Row"];

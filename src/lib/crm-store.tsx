@@ -21,7 +21,7 @@ async function pushPresence(
 ) {
   await supabase
     .from("operator_presence")
-    .update({ ...patch, updated_at: new Date().toISOString() })
+    .update({ ...(patch as any), updated_at: new Date().toISOString() })
     .eq("operator_id", operatorId);
 }
 
@@ -66,7 +66,20 @@ interface CrmValue {
   insight: string;
   progress: number;
   history: ProgressPoint[];
-  lead: Lead & { realId?: string; callback_at?: string | null };
+  lead: Lead & { 
+    realId?: string; 
+    callback_at?: string | null;
+    email?: string | null;
+    company?: string | null;
+    cpf?: string | null;
+    city?: string | null;
+    state?: string | null;
+    curso?: string | null;
+    origin?: string;
+    createdAt?: string;
+    midia?: string | null;
+    campanha?: string | null;
+  };
   loadingLead: boolean;
   stepIndex: number;
   stepDone: boolean[];
@@ -78,6 +91,8 @@ interface CrmValue {
   endPause: () => Promise<void>;
   answered: () => void;
   notAnswered: () => Promise<void>;
+  whatsappSent: () => Promise<void>;
+  completeStep: (stepIndex: number) => void;
   nextLead: () => void;
   selectLead: (targetLead: { id?: string; name: string; phone?: string | null; profession?: string; status?: string; temperature?: string }) => void;
   registerLead: (name: string, phone: string) => void;
@@ -85,6 +100,11 @@ interface CrmValue {
   callOpen: boolean;
   callSeconds: number;
   finishCall: (outcome: CallOutcome, callbackAt?: string) => Promise<void>;
+  opportunities: number;
+  returns: number;
+  hotLeads: number;
+  monthlyConverted: number;
+  blockingAlert: { message: string; action: string; onResolve: () => void } | null;
 }
 
 const CrmContext = createContext<CrmValue | null>(null);
@@ -96,17 +116,24 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
   const [conversions, setConversions] = useState(0);
   const [conversations, setConversations] = useState(0);
   const [negotiations, setNegotiations] = useState(0);
-  const [lead, setLead] = useState<Lead & { realId?: string; callback_at?: string | null }>(() => generateLead());
+  const [lead, setLead] = useState<CrmValue['lead']>(() => generateLead());
   const [loadingLead, setLoadingLead] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
-  const [stepDone, setStepDone] = useState([false]);
+  const [stepDone, setStepDone] = useState([false, false]);
   const [stepStart, setStepStart] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
+  
+  const [opportunities, setOpportunities] = useState(0);
+  const [returns, setReturns] = useState(0);
+  const [hotLeads, setHotLeads] = useState(0);
+  const [monthlyConverted, setMonthlyConverted] = useState(0);
   const [pause, setPause] = useState<{ reason: string; startedAt: number; eventId?: string } | null>(null);
   const [alerts, setAlerts] = useState<string[]>([]);
+  const [blockingAlertInfo, setBlockingAlertInfo] = useState<{ type: "pause" | "idle" } | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const talkSecondsRef = useRef(0);
   const pauseSecondsRef = useRef(0);
+  const fnsRef = useRef<{ endPause?: () => Promise<void>; nextLead?: () => void }>({});
 
   // Load today's session id
   useEffect(() => {
@@ -142,6 +169,16 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
           isNew: false,
           status: (target.temperature ?? "morno") as import("./crm-data").LeadStatus,
           returnTime: "10:00",
+          email: target.email,
+          company: target.company,
+          cpf: target.cpf,
+          city: target.city,
+          state: target.state,
+          curso: target.curso,
+          origin: target.origin,
+          createdAt: target.created_at,
+          midia: target.midia,
+          campanha: target.campanha,
         });
       }
     }
@@ -158,8 +195,8 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
         .eq("id", operatorId)
         .single();
 
-      if (profile?.daily_contacts_goal != null) {
-        setDailyGoal(profile.daily_contacts_goal);
+      if ((profile as any)?.daily_contacts_goal != null) {
+        setDailyGoal((profile as any).daily_contacts_goal);
         return;
       }
 
@@ -194,6 +231,27 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
         }
       });
   }, [operatorId]);
+
+  useEffect(() => {
+    async function loadMetrics() {
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString();
+  
+      const [opp, ret, hot, conv] = await Promise.all([
+        supabase.from("leads").select("id", { count: "exact", head: true }).eq("assigned_to", operatorId).eq("status", "pending"),
+        supabase.from("leads").select("id", { count: "exact", head: true }).eq("assigned_to", operatorId).not("callback_at", "is", null).lte("callback_at", todayEnd),
+        supabase.from("leads").select("id", { count: "exact", head: true }).eq("assigned_to", operatorId).eq("temperature", "quente"),
+        supabase.from("leads").select("id", { count: "exact", head: true }).eq("assigned_to", operatorId).eq("status", "converted").gte("updated_at", monthStart),
+      ]);
+  
+      setOpportunities(opp.count ?? 0);
+      setReturns(ret.count ?? 0);
+      setHotLeads(hot.count ?? 0);
+      setMonthlyConverted(conv.count ?? 0);
+    }
+    loadMetrics();
+  }, [operatorId, contacts]);
 
   const [callOpen, setCallOpen] = useState(false);
   const [callStart, setCallStart] = useState<number | null>(null);
@@ -238,6 +296,18 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
   };
 
   useEffect(() => {
+    if (pause && pauseSecondsRef.current > 7200) { // 2 hours hard limit
+      if (!blockingAlertInfo || blockingAlertInfo.type !== "pause") {
+        setBlockingAlertInfo({ type: "pause" });
+      }
+    }
+
+    if (!pause && allDone && completedAt.current && (now - completedAt.current) / 1000 > 600) { // 10 min idle
+      if (!blockingAlertInfo || blockingAlertInfo.type !== "idle") {
+        setBlockingAlertInfo({ type: "idle" });
+      }
+    }
+
     if (pause) return;
     if (stepSeconds > STEP_ALERT_SECONDS) {
       pushAlert(`step-${lead.id}-${stepIndex}`, `Você está há mais de 5 min na ligação.`);
@@ -250,7 +320,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       pushAlert(`pace-${Math.floor(workedHours)}`, `Ritmo abaixo da meta: esperado ${expected} contatos, você tem ${contacts}.`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stepSeconds, allDone, contacts, pause]);
+  }, [stepSeconds, allDone, contacts, pause, now]);
 
   useEffect(() => {
     if (callOpen && callSeconds > LONG_CALL_SECONDS) {
@@ -296,6 +366,21 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
     goalReached: progress >= 1,
     callOpen,
     callSeconds,
+    opportunities,
+    returns,
+    hotLeads,
+    monthlyConverted,
+    blockingAlert: blockingAlertInfo ? {
+      message: blockingAlertInfo.type === "pause" 
+        ? "Sua pausa já ultrapassou 2 horas. Isso é acima do limite máximo permitido."
+        : "Você está ocioso há mais de 10 minutos após concluir o atendimento. Avance para o próximo lead.",
+      action: blockingAlertInfo.type === "pause" ? "Encerrar pausa agora" : "Avançar para próximo lead",
+      onResolve: () => {
+        if (blockingAlertInfo.type === "pause") void fnsRef.current.endPause?.();
+        else void fnsRef.current.nextLead?.();
+        setBlockingAlertInfo(null);
+      }
+    } : null,
 
     startPause: async (reason) => {
       const nowTime = Date.now();
@@ -307,7 +392,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
         reason,
         started_at: new Date(nowTime).toISOString(),
       }).select("id").single();
-      setPause({ reason, startedAt: nowTime, eventId: data?.id });
+      setPause({ reason, startedAt: nowTime, ...(data?.id ? { eventId: data.id } : {}) });
       await pushPresence(operatorId, { state: "pausa", pause_reason: reason });
     },
 
@@ -321,6 +406,17 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
         await supabase.from("pause_events").update({ ended_at: ended }).eq("id", eventId);
       }
       await pushPresence(operatorId, { state: "ocioso", pause_reason: null, pause_seconds: pauseSecondsRef.current });
+    },
+
+    completeStep: (stepIndex: number) => {
+      setStepDone((d) => d.map((v, i) => (i === stepIndex ? true : v)));
+      completedAt.current = Date.now();
+    },
+
+    whatsappSent: async () => {
+      setStepDone((d) => d.map((v, i) => (i === 1 ? true : v)));
+      completedAt.current = Date.now();
+      toast.success("WhatsApp enviado!");
     },
 
     answered: () => {
@@ -358,23 +454,23 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       // Map outcome → temperature and status
       const temperature = OUTCOME_TEMPERATURE[outcome];
       const newStatus =
-        outcome === "interessado" ? "converted" :
-        outcome === "nao" || outcome === "errado" ? "inactive" :
+        ["convertido", "agendado"].includes(outcome) ? "converted" :
+        ["sem_interesse", "numero_invalido"].includes(outcome) ? "inactive" :
         "contacted";
 
-      if (outcome === "interessado") {
+      if (["convertido", "agendado", "interessado"].includes(outcome)) {
         setConversions((c) => { newConversions = c + 1; return c + 1; });
-        toast.success("🎉 Cliente interessado! Lead marcado como Quente.");
-      } else if (outcome === "pensar") {
-        toast.info("Lead marcado como Morno — retorno em 3 dias.");
+        toast.success("🎉 Cliente qualificado! Lead marcado como Quente.");
+      } else if (outcome === "pensar" || outcome === "em_nutricao") {
+        toast.info("Lead marcado como Morno.");
       } else if (outcome === "retorno") {
         toast.info("Retorno agendado com sucesso!");
       } else if (outcome === "sem_resposta") {
         toast.warning("Sem resposta — retorno agendado para amanhã.");
-      } else if (outcome === "nao") {
+      } else if (outcome === "sem_interesse") {
         toast("Lead marcado como Frio — inativo.");
       } else {
-        toast.warning("Lead marcado para revisão.");
+        toast.warning("Lead marcado como inválido/frio.");
       }
 
       // Update lead in DB — temperature + status + callback
@@ -396,7 +492,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
         lead_name: lead.name,
         lead_phone: lead.phone,
         contact_type: "call",
-        outcome: outcome as string,
+        outcome: outcome as any,
         started_at: callStart ? new Date(callStart).toISOString() : new Date().toISOString(),
         ended_at: ended,
       });
@@ -456,16 +552,26 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       window.setTimeout(() => {
         setLead({
           id: target.id ? `lead-${target.id}` : `lead-${Date.now()}`,
-          realId: target.id,
+          ...(target.id ? { realId: target.id } : {}),
           name: target.name,
           phone: target.phone ?? "(11) 99999-9999",
           profession: target.profession ?? "Cliente cadastrado",
           isNew: false,
           status: (target.temperature ?? target.status ?? "morno") as import("./crm-data").LeadStatus,
           returnTime: "10:00",
+          email: (target as any).email,
+          company: (target as any).company,
+          cpf: (target as any).cpf,
+          city: (target as any).city,
+          state: (target as any).state,
+          curso: (target as any).curso,
+          origin: (target as any).origin,
+          createdAt: (target as any).created_at,
+          midia: (target as any).midia,
+          campanha: (target as any).campanha,
         });
         setStepIndex(0);
-        setStepDone([false]);
+        setStepDone([false, false]);
         setStepStart(Date.now());
         completedAt.current = null;
         setAlerts([]);
@@ -475,6 +581,10 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
     },
 
     nextLead: async () => {
+      if (!stepDone.every(Boolean)) {
+        toast.warning("Complete todas as etapas antes de avançar.");
+        return;
+      }
       setLoadingLead(true);
       const { data } = await supabase
         .from("leads")
@@ -495,13 +605,23 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
           isNew: false,
           status: (target.temperature ?? "morno") as import("./crm-data").LeadStatus,
           returnTime: "10:00",
+          email: target.email,
+          company: target.company,
+          cpf: target.cpf,
+          city: target.city,
+          state: target.state,
+          curso: target.curso,
+          origin: target.origin,
+          createdAt: target.created_at,
+          midia: target.midia,
+          campanha: target.campanha,
         });
       } else {
         const fresh = generateLead();
         setLead(fresh);
       }
       setStepIndex(0);
-      setStepDone([false]);
+      setStepDone([false, false]);
       setStepStart(Date.now());
       completedAt.current = null;
       setAlerts([]);
@@ -512,6 +632,9 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       toast.success(`Lead ${name} (${phone}) cadastrado na fila.`);
     },
   };
+
+  fnsRef.current.endPause = value.endPause;
+  fnsRef.current.nextLead = value.nextLead;
 
   return <CrmContext.Provider value={value}>{children}</CrmContext.Provider>;
 }

@@ -41,13 +41,13 @@ export function useSaveGoals() {
       if (existing) {
         const { error } = await supabase
           .from("goals")
-          .update({ ...goals, updated_by: user?.id, updated_at: new Date().toISOString() })
+          .update({ ...goals, updated_by: user?.id ?? null, updated_at: new Date().toISOString() })
           .eq("id", existing.id);
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from("goals")
-          .insert({ ...goals, updated_by: user?.id });
+          .insert({ ...goals, updated_by: user?.id ?? null });
         if (error) throw error;
       }
     },

@@ -17,12 +17,12 @@ export function WhatsappChat({ className = "" }: { className?: string }) {
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [crm.messages.length, crm.clientTyping]);
+  }, [(crm as any).messages?.length, (crm as any).clientTyping]);
 
   const send = (text: string) => {
     const value = text.trim();
     if (!value) return;
-    crm.sendMessage(value);
+    (crm as any).sendMessage?.(value);
     setDraft("");
     setShowEmoji(false);
   };
@@ -30,7 +30,7 @@ export function WhatsappChat({ className = "" }: { className?: string }) {
   const attach = (files: FileList | null) => {
     const file = files?.[0];
     if (!file) return;
-    crm.sendMessage(file.name, { name: file.name, kind: file.type.startsWith("image/") ? "image" : "file" });
+    (crm as any).sendMessage?.(file.name, { name: file.name, kind: file.type.startsWith("image/") ? "image" : "file" });
   };
 
   return (
@@ -39,17 +39,17 @@ export function WhatsappChat({ className = "" }: { className?: string }) {
         <div className="flex min-w-0 items-center gap-2">
           <span className="size-2 shrink-0 rounded-full bg-whatsapp" />
           <p className="truncate text-sm font-semibold">WhatsApp — {crm.lead.name}</p>
-          {crm.unread > 0 && (
-            <Badge className="animate-pulse-alert bg-whatsapp text-success-foreground">{crm.unread}</Badge>
+          {((crm as any).unread ?? 0) > 0 && (
+            <Badge className="animate-pulse-alert bg-whatsapp text-success-foreground">{(crm as any).unread}</Badge>
           )}
         </div>
-        <Button size="icon" variant="ghost" onClick={crm.toggleMute} aria-label={crm.muted ? "Ativar som" : "Silenciar"}>
-          {crm.muted ? <BellOff className="size-4" /> : <Bell className="size-4" />}
+        <Button size="icon" variant="ghost" onClick={(crm as any).toggleMute} aria-label={(crm as any).muted ? "Ativar som" : "Silenciar"}>
+          {(crm as any).muted ? <BellOff className="size-4" /> : <Bell className="size-4" />}
         </Button>
       </div>
 
-      <div ref={scrollRef} onClick={crm.markChatRead} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-        {crm.messages.map((m) => {
+      <div ref={scrollRef} onClick={(crm as any).markChatRead} className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+        {((crm as any).messages as any[] ?? []).map((m: any) => {
           const mine = m.from === "operator";
           return (
             <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
@@ -80,7 +80,7 @@ export function WhatsappChat({ className = "" }: { className?: string }) {
             </div>
           );
         })}
-        {crm.clientTyping && (
+        {(crm as any).clientTyping && (
           <p className="animate-pulse text-xs text-whatsapp">Cliente está digitando...</p>
         )}
       </div>

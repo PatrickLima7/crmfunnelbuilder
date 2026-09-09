@@ -25,6 +25,11 @@ export const STEPS = [
     label: "Ligação telefônica",
     hint: "Apresente-se, confirme o interesse e use o script como guia.",
   },
+  {
+    key: "whatsapp",
+    label: "Mensagem WhatsApp",
+    hint: "Envie mensagem de acompanhamento via WhatsApp.",
+  },
 ] as const;
 
 export type StepKey = (typeof STEPS)[number]["key"];

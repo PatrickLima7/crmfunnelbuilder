@@ -75,16 +75,8 @@ export function CallScriptModal() {
         return;
       }
       const selected = new Date(`${returnDate}T${returnTime}`);
-      const maxAllowed = new Date();
-      maxAllowed.setDate(maxAllowed.getDate() + 7);
-
       if (selected < new Date()) {
         setRetornoError("A data/hora de retorno deve ser no futuro.");
-        return;
-      }
-
-      if (selected > maxAllowed) {
-        setRetornoError("A data de retorno não pode ultrapassar 7 dias corridos.");
         return;
       }
 
@@ -96,7 +88,7 @@ export function CallScriptModal() {
 
     await crm.finishCall(
       outcome,
-      outcome === "pensar" || outcome === "revisao" ? callbackDays.toString() : undefined
+      outcome === "pensar" ? callbackDays.toString() : undefined
     );
     reset();
   };
@@ -274,7 +266,7 @@ export function CallScriptModal() {
 
               {outcome === "retorno" && (
                 <div className="space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
-                  <p className="text-xs font-bold text-primary">📅 Definir data e hora do retorno (máximo 7 dias):</p>
+                  <p className="text-xs font-bold text-primary">📅 Definir data e hora do retorno:</p>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-[10px] font-semibold text-muted-foreground uppercase">Data</label>
@@ -301,7 +293,7 @@ export function CallScriptModal() {
                 </div>
               )}
 
-              {(outcome === "pensar" || outcome === "revisao") && (
+              {outcome === "pensar" && (
                 <div className="space-y-1.5 rounded-xl border border-warning/30 bg-warning/10 p-3">
                   <label className="block text-xs font-bold text-warning-foreground">
                     📅 Agendar retorno para daqui a quantos dias?

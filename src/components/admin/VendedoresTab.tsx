@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Shield, Target, User, UserCheck, UserX, Check, Power } from "lucide-react";
+import { Plus, Shield, Target, User, UserCheck, UserX, Check, Power, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { supabase } from "@/lib/supabase";
 import type { Profile } from "@/lib/supabase-types";
 import { toast } from "sonner";
@@ -69,9 +70,10 @@ function useUpdateProfile() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: Partial<Profile> }) => {
+      const { id: _, created_at: __, ...cleanUpdates } = updates as any;
       const { error } = await supabase
         .from("profiles")
-        .update({ ...updates, updated_at: new Date().toISOString() })
+        .update({ ...cleanUpdates, updated_at: new Date().toISOString() })
         .eq("id", id);
       if (error) throw error;
     },
@@ -85,17 +87,73 @@ function useUpdateProfile() {
   });
 }
 
+function useLeadCounts() {
+  return useQuery({
+    queryKey: ["leads", "counts"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("leads").select("assigned_to");
+      if (error) throw error;
+      const counts: Record<string, number> = {};
+      for (const lead of data || []) {
+        if (lead.assigned_to) {
+          counts[lead.assigned_to] = (counts[lead.assigned_to] || 0) + 1;
+        }
+      }
+      return counts;
+    },
+  });
+}
+
+function useDeleteProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (profileId: string) => {
+      const { data: activeOps } = await supabase.from("profiles").select("id").eq("role", "operator").eq("active", true).neq("id", profileId);
+      
+      const { data: operatorLeads } = await supabase
+        .from("leads")
+        .select("id")
+        .eq("assigned_to", profileId);
+
+      let redistributed = 0;
+      if (operatorLeads && operatorLeads.length > 0 && activeOps && activeOps.length > 0) {
+        for (let i = 0; i < operatorLeads.length; i++) {
+          const newOwner = activeOps[i % activeOps.length]!.id;
+          await supabase.from("leads").update({ assigned_to: newOwner, updated_at: new Date().toISOString() }).eq("id", operatorLeads[i]!.id);
+          redistributed++;
+        }
+      }
+
+      const { error } = await supabase.from("profiles").delete().eq("id", profileId);
+      if (error) throw error;
+      return redistributed;
+    },
+    onSuccess: (redistributed) => {
+      toast.success(`Operador excluído. ${redistributed} lead(s) redistribuído(s).`);
+      qc.invalidateQueries({ queryKey: ["profiles"] });
+      qc.invalidateQueries({ queryKey: ["leads"] });
+    },
+    onError: (err: Error) => {
+      toast.error(`Erro ao excluir: ${err.message}`);
+    },
+  });
+}
+
 export function VendedoresTab() {
   const { data: profiles = [], isLoading } = useVendedores();
   const createOp = useCreateOperator();
   const updateProfile = useUpdateProfile();
+  const deleteProfile = useDeleteProfile();
+  const { data: leadCounts = {} } = useLeadCounts();
   const [open, setOpen] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [newName, setNewName] = useState("");
   const [newGoal, setNewGoal] = useState<number>(80);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const admins = profiles.filter((p) => p.role === "admin");
   const operators = profiles.filter((p) => p.role === "operator");
+  const filteredOperators = operators.filter(op => op.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -180,20 +238,34 @@ export function VendedoresTab() {
 
       {/* Operators list */}
       <div className="rounded-xl border border-border bg-panel">
-        <div className="border-b border-border px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-muted-foreground">
-          Vendedores / Operadores
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-border px-4 py-2.5 gap-2">
+          <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            Vendedores / Operadores
+          </div>
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Buscar operador..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-8 h-8 text-xs"
+            />
+          </div>
         </div>
         <div className="divide-y divide-border">
-          {operators.length === 0 && (
-            <p className="px-4 py-4 text-sm text-muted-foreground">Nenhum operador cadastrado ainda.</p>
+          {filteredOperators.length === 0 && (
+            <p className="px-4 py-4 text-sm text-muted-foreground">Nenhum operador encontrado.</p>
           )}
-          {operators.map((op) => (
+          {filteredOperators.map((op) => (
             <ProfileRow
               key={op.id}
               profile={op}
-              onUpdateGoal={(goal) => updateProfile.mutate({ id: op.id, updates: { daily_contacts_goal: goal } })}
-              onToggleActive={(active) => updateProfile.mutate({ id: op.id, updates: { active } })}
+              leadCount={leadCounts[op.id] || 0}
+              onUpdateGoal={(goal) => updateProfile.mutate({ id: op.id, updates: { daily_contacts_goal: goal } as any })}
+              onToggleActive={(active) => updateProfile.mutate({ id: op.id, updates: { active } as any })}
               onMakeAdmin={() => updateProfile.mutate({ id: op.id, updates: { role: "admin" } })}
+              onDelete={() => deleteProfile.mutate(op.id)}
+              isDeleting={deleteProfile.isPending && deleteProfile.variables === op.id}
             />
           ))}
         </div>
@@ -220,18 +292,24 @@ export function VendedoresTab() {
 
 function ProfileRow({
   profile,
+  leadCount,
   onUpdateGoal,
   onToggleActive,
   onMakeAdmin,
   onMakeOperator,
+  onDelete,
+  isDeleting,
 }: {
   profile: Profile;
+  leadCount?: number;
   onUpdateGoal?: (goal: number) => void;
   onToggleActive?: (active: boolean) => void;
   onMakeAdmin?: () => void;
   onMakeOperator?: () => void;
+  onDelete?: () => void;
+  isDeleting?: boolean;
 }) {
-  const [goal, setGoal] = useState<number>(profile.daily_contacts_goal ?? 80);
+  const [goal, setGoal] = useState<number>((profile as any).daily_contacts_goal ?? 80);
   const [editing, setEditing] = useState(false);
 
   const initials = profile.name
@@ -246,7 +324,7 @@ function ProfileRow({
     setEditing(false);
   };
 
-  const isActive = profile.active !== false;
+  const isActive = (profile as any).active !== false;
 
   return (
     <div className={`flex flex-wrap items-center gap-3 px-4 py-3 ${!isActive ? "opacity-60 bg-muted/20" : ""}`}>
@@ -269,6 +347,7 @@ function ProfileRow({
             <><User className="size-3" /> Operador</>
           )}
           · criado em {new Date(profile.created_at).toLocaleDateString("pt-BR")}
+          {leadCount !== undefined && ` · ${leadCount} lead(s)`}
         </p>
       </div>
 
@@ -296,7 +375,7 @@ function ProfileRow({
               className="font-mono text-xs font-bold text-foreground hover:underline"
               title="Clique para editar a meta individual"
             >
-              {profile.daily_contacts_goal ?? 80} contatos/dia
+              {(profile as any).daily_contacts_goal ?? 80} contatos/dia
             </button>
           )}
         </div>
@@ -322,6 +401,30 @@ function ProfileRow({
           <Button size="sm" variant="secondary" onClick={onMakeOperator} className="h-7 text-xs gap-1">
             <UserX className="size-3" /> Tornar operador
           </Button>
+        )}
+        {onDelete && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-destructive hover:bg-destructive/10 hover:text-destructive">
+                <Trash2 className="size-3" /> Excluir
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Excluir operador?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Tem certeza que deseja excluir "{profile.name}"?
+                  {leadCount !== undefined && leadCount > 0 && ` Os ${leadCount} lead(s) atuais serão redistribuídos entre os operadores ativos.`}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction onClick={onDelete} disabled={isDeleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                  {isDeleting ? "Excluindo..." : "Excluir"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
       </div>
     </div>

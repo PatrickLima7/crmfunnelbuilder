@@ -9,6 +9,7 @@ import {
   FileUp,
   GripVertical,
   LogOut,
+  Megaphone,
   Phone,
   Plus,
   Save,
@@ -32,6 +33,7 @@ import { VendedoresTab } from "@/components/admin/VendedoresTab";
 import { RelatoriosTab } from "@/components/admin/RelatoriosTab";
 import { ConfiguracaoTab } from "@/components/admin/ConfiguracaoTab";
 import { LeadsTab } from "@/components/admin/LeadsTab";
+import { MidiasTab } from "@/components/admin/MidiasTab";
 import type { ScriptStepRow } from "@/lib/supabase-types";
 
 export const Route = createFileRoute("/admin")({
@@ -215,6 +217,9 @@ function AdminPage() {
             <TabsTrigger value="script">Script</TabsTrigger>
             <TabsTrigger value="vendedores">
               <Users className="size-3.5" /> Vendedores
+            </TabsTrigger>
+            <TabsTrigger value="midias">
+              <Megaphone className="size-3.5" /> Mídias
             </TabsTrigger>
             <TabsTrigger value="relatorios">
               <BarChart3 className="size-3.5" /> Relatórios
@@ -408,6 +413,11 @@ function AdminPage() {
           {/* ── VENDEDORES ── */}
           <TabsContent value="vendedores" className="mt-4">
             <VendedoresTab />
+          </TabsContent>
+
+          {/* ── MÍDIAS ── */}
+          <TabsContent value="midias" className="mt-4">
+            <MidiasTab />
           </TabsContent>
 
           {/* ── RELATÓRIOS ── */}

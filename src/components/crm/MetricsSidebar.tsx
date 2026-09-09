@@ -1,4 +1,4 @@
-import { Activity, Flame, Sparkles, Target, TrendingUp, Users } from "lucide-react";
+import { Activity, Flame, Sparkles, Target, TrendingUp, Users, ThermometerSun, RotateCcw, Zap, Layers } from "lucide-react";
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useCrm } from "@/lib/crm-store";
 
@@ -57,6 +57,13 @@ export function MetricsSidebar() {
         <Metric icon={Activity} label="Conversas" value={String(crm.conversations)} />
         <Metric icon={TrendingUp} label="Negociações" value={String(crm.negotiations)} />
         <Metric icon={Activity} label="Ritmo/h" value={crm.pace.toFixed(1)} tone="warning" />
+      </div>
+
+      <div className="grid shrink-0 grid-cols-2 gap-2">
+        <Metric icon={Layers} label="Oportunidades" value={String(crm.opportunities)} />
+        <Metric icon={RotateCcw} label="Retornos" value={String(crm.returns)} tone={crm.returns > 0 ? "warning" : "default"} />
+        <Metric icon={ThermometerSun} label="Quentes" value={String(crm.hotLeads)} tone="success" />
+        <Metric icon={Zap} label="Convertidos (mês)" value={String(crm.monthlyConverted)} tone="success" />
       </div>
 
       <div className="shrink-0 rounded-[var(--radius)] border border-success/40 bg-success/10 p-2">

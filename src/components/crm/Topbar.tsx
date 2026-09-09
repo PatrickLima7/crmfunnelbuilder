@@ -21,15 +21,15 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PAUSE_REASONS, formatClock } from "@/lib/crm-data";
+import { formatClock } from "@/lib/crm-data";
 import { useCrm } from "@/lib/crm-store";
 import { supabase } from "@/lib/supabase";
-import { usePauseTypes } from "@/hooks/usePauseTypes";
+import { useActivePauseTypes } from "@/hooks/usePauseConfig";
 
 export function Topbar({ operator }: { operator: string }) {
   const crm = useCrm();
   const navigate = useNavigate();
-  const { data: pauseTypes = [...PAUSE_REASONS] } = usePauseTypes();
+  const { data: pauseTypes = [] } = useActivePauseTypes();
   const [clock, setClock] = useState("--:--:--");
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -121,9 +121,9 @@ export function Topbar({ operator }: { operator: string }) {
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>Selecionar pausa</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {pauseTypes.map((r) => (
-              <DropdownMenuItem key={r} onSelect={() => crm.startPause(r)}>
-                {r}
+            {pauseTypes.map((p) => (
+              <DropdownMenuItem key={p.id} onSelect={() => crm.startPause(p.nome)}>
+                {p.nome} <span className="ml-auto text-[10px] text-muted-foreground">{p.max_minutes} min</span>
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>

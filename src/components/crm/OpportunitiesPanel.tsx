@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   Bell, Calendar, Clock, Flame, FileUp, Layers,
   PhoneCall, Plus, Search, Snowflake, Thermometer,
-  Trash2, X,
+  Trash2, X, Sprout,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +39,7 @@ const STATUS_LABEL: Record<Lead["status"], string> = {
   contacted: "Contatado",
   converted: "Convertido",
   inactive:  "Inativo",
+  em_nutricao: "Em Nutrição",
 };
 
 const STATUS_COLOR: Record<Lead["status"], string> = {
@@ -46,6 +47,7 @@ const STATUS_COLOR: Record<Lead["status"], string> = {
   contacted: "bg-info/15 text-info",
   converted: "bg-success/15 text-success",
   inactive:  "bg-destructive/10 text-destructive",
+  em_nutricao: "bg-purple-500/15 text-purple-500",
 };
 
 const BR_STATES = [
@@ -76,7 +78,7 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
   const updateLead = useUpdateLead(operatorId);
 
   const [search, setSearch] = useState("");
-  const [filterTab, setFilterTab] = useState<Temperature | "all" | "callbacks">("all");
+  const [filterTab, setFilterTab] = useState<Temperature | "all" | "callbacks" | "nutricao">("all");
   const [openForm, setOpenForm] = useState(false);
   const [openImport, setOpenImport] = useState(false);
 
@@ -87,6 +89,7 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
   const visible = leads.filter((l) => {
     let matchTab = true;
     if (filterTab === "callbacks") matchTab = !!l.callback_at;
+    else if (filterTab === "nutricao") matchTab = l.status === "em_nutricao";
     else if (filterTab !== "all") matchTab = l.temperature === filterTab;
     const matchSearch = !search ||
       l.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -143,12 +146,14 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
 
       {/* Filter Pills */}
       <div className="flex shrink-0 flex-wrap gap-1.5">
-        {(["all", "callbacks", "quente", "morno", "frio"] as const).map((t) => {
+        {(["all", "callbacks", "quente", "morno", "frio", "nutricao"] as const).map((t) => {
           const count = t === "all" ? leads.length : t === "callbacks" ? allCallbacks.length
+            : t === "nutricao" ? leads.filter(l => l.status === "em_nutricao").length
             : t === "quente" ? quente : t === "morno" ? morno : frio;
           const label = t === "all" ? "Todos" : t === "callbacks" ? "Retornos"
-            : TEMP_CONFIG[t].label;
-          const Icon = t === "callbacks" ? Calendar : t !== "all" ? TEMP_CONFIG[t].icon : null;
+            : t === "nutricao" ? "Em Nutrição"
+            : TEMP_CONFIG[t as Temperature].label;
+          const Icon = t === "callbacks" ? Calendar : t === "nutricao" ? Sprout : t !== "all" ? TEMP_CONFIG[t as Temperature].icon : null;
           const active = filterTab === t;
           return (
             <button key={t} onClick={() => setFilterTab(t)}
@@ -195,7 +200,7 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
         {visible.map((lead) => (
           <LeadCard key={lead.id} lead={lead}
             isSelected={crm.lead.realId === lead.id}
-            onSelect={() => crm.selectLead(lead)}
+            onSelect={() => crm.selectLead(lead as any)}
             onUpdate={(updates) => updateLead.mutate({ id: lead.id, updates })}
             operatorId={operatorId}
           />
@@ -382,7 +387,7 @@ function LeadForm({ onSubmit, loading }: {
     let callback_at: string | undefined;
     const days = parseInt(callbackDays);
     if (days > 0) { const d = new Date(); d.setDate(d.getDate() + days); callback_at = d.toISOString(); }
-    await onSubmit({ ...form, name: form.name.trim(), callback_at });
+    await onSubmit({ ...form, name: form.name.trim(), ...(callback_at ? { callback_at } : {}) } as any);
     setForm({ name: "", temperature: "morno", origin: "manual" });
     setCallbackDays("0");
   };

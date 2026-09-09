@@ -25,7 +25,7 @@ export function useOperatorsRealtime() {
 
       if (!error && data) {
         setOperators(
-          data.map((row) => ({
+          data.map((row: any) => ({
             ...row,
             profile: Array.isArray(row.profile) ? row.profile[0] ?? null : (row.profile as Pick<Profile, "id" | "name"> | null),
           })),
@@ -44,7 +44,8 @@ export function useOperatorsRealtime() {
         { event: "*", schema: "public", table: "operator_presence" },
         async (payload) => {
           if (payload.eventType === "DELETE") {
-            setOperators((prev) => prev.filter((op) => op.id !== payload.old.id));
+            const oldId = (payload.old as { id?: string })['id'];
+            setOperators((prev) => prev.filter((op) => op.id !== oldId));
             return;
           }
 

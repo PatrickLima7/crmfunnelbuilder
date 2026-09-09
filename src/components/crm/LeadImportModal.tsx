@@ -65,6 +65,12 @@ const LEAD_FIELDS: { key: keyof LeadInput; label: string; required?: boolean }[]
   { key: "company",    label: "Empresa" },
   { key: "temperature",label: "Temperatura (quente/morno/frio)" },
   { key: "notes",      label: "Observações" },
+  { key: "midia",      label: "Mídia de origem" },
+  { key: "campanha",   label: "Campanha" },
+  { key: "curso",      label: "Curso de interesse" },
+  { key: "cep",        label: "CEP" },
+  { key: "genero",     label: "Gênero" },
+  { key: "data_nascimento", label: "Data de nascimento" },
 ];
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -121,13 +127,29 @@ export function LeadImportModal({ open, onClose, operatorId, autoDistribute = fa
         if (match) autoMap[key] = match;
       });
       // Common aliases
-      if (!autoMap.name) {
+      if (!autoMap["name"]) {
         const alias = h.find((header) => /nome|name/i.test(header));
-        if (alias) autoMap.name = alias;
+        if (alias) autoMap["name"] = alias;
       }
-      if (!autoMap.phone) {
+      if (!autoMap["phone"]) {
         const alias = h.find((header) => /fone|phone|celular|tel/i.test(header));
-        if (alias) autoMap.phone = alias;
+        if (alias) autoMap["phone"] = alias;
+      }
+      if (!autoMap["midia"]) {
+        const alias = h.find((header) => /midia|mídia|media|fonte/i.test(header));
+        if (alias) autoMap["midia"] = alias;
+      }
+      if (!autoMap["campanha"]) {
+        const alias = h.find((header) => /campanha|campaign/i.test(header));
+        if (alias) autoMap["campanha"] = alias;
+      }
+      if (!autoMap["curso"]) {
+        const alias = h.find((header) => /curso|course/i.test(header));
+        if (alias) autoMap["curso"] = alias;
+      }
+      if (!autoMap["cep"]) {
+        const alias = h.find((header) => /cep|zipcode|zip/i.test(header));
+        if (alias) autoMap["cep"] = alias;
       }
       setMapping(autoMap as Record<keyof LeadInput, string>);
       setStep("map");
@@ -149,13 +171,13 @@ export function LeadImportModal({ open, onClose, operatorId, autoDistribute = fa
         const col = mapping[key];
         if (col && row[col]) lead[key] = row[col].trim();
       });
-      if (lead.temperature) {
-        const t = lead.temperature.toLowerCase();
-        if (t.includes("quente") || t.includes("hot")) lead.temperature = "quente";
-        else if (t.includes("frio") || t.includes("cold") || t.includes("fria")) lead.temperature = "frio";
-        else lead.temperature = "morno";
+      if (lead["temperature"]) {
+        const t = lead["temperature"].toLowerCase();
+        if (t.includes("quente") || t.includes("hot")) lead["temperature"] = "quente";
+        else if (t.includes("frio") || t.includes("cold") || t.includes("fria")) lead["temperature"] = "frio";
+        else lead["temperature"] = "morno";
       }
-      lead.origin = "csv";
+      lead["origin"] = "csv";
       return lead as LeadInput;
     }).filter((l) => !!l.name);
 
@@ -172,7 +194,7 @@ export function LeadImportModal({ open, onClose, operatorId, autoDistribute = fa
           .from("profiles")
           .select("id, name")
           .eq("role", "operator")
-          .neq("active", false);
+          .neq("active" as any, false);
 
         if (opErr) throw opErr;
 
@@ -201,6 +223,15 @@ export function LeadImportModal({ open, onClose, operatorId, autoDistribute = fa
             assigned_to: assignedOp.id,
             notes: l.notes || null,
             callback_at: l.callback_at || null,
+            midia: l.midia || null,
+            campanha: l.campanha || null,
+            curso: l.curso || null,
+            cep: l.cep || null,
+            genero: l.genero || null,
+            data_nascimento: l.data_nascimento || null,
+            historico: [{ ts: new Date().toISOString(), acao: "importacao_csv", detalhes: "Importado via CSV" }] as unknown as import("@/lib/supabase-types").Json,
+            data_primeiro_cadastro: new Date().toISOString(),
+            data_ultimo_cadastro: new Date().toISOString(),
           };
         });
 
@@ -343,7 +374,7 @@ export function LeadImportModal({ open, onClose, operatorId, autoDistribute = fa
               <table className="w-full text-xs">
                 <thead className="bg-muted">
                   <tr>
-                    {["Nome", "Telefone", "E-mail", "Cidade", "Temperatura"].map((h) => (
+                    {["Nome", "Telefone", "E-mail", "Cidade", "Mídia", "Curso", "Temperatura"].map((h) => (
                       <th key={h} className="border-b px-2 py-1.5 text-left font-semibold text-muted-foreground">{h}</th>
                     ))}
                   </tr>
@@ -355,6 +386,8 @@ export function LeadImportModal({ open, onClose, operatorId, autoDistribute = fa
                       <td className="px-2 py-1.5 font-mono">{lead.phone ?? "—"}</td>
                       <td className="px-2 py-1.5">{lead.email ?? "—"}</td>
                       <td className="px-2 py-1.5">{lead.city ?? "—"}</td>
+                      <td className="px-2 py-1.5">{lead.midia ?? "—"}</td>
+                      <td className="px-2 py-1.5">{lead.curso ?? "—"}</td>
                       <td className="px-2 py-1.5 capitalize">{lead.temperature ?? "morno"}</td>
                     </tr>
                   ))}
