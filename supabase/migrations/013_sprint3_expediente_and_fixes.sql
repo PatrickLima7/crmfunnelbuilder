@@ -1,11 +1,9 @@
--- Migration 013: Garantir coluna callback_at e criar tabela expediente_logs
--- Execute este script no Supabase Dashboard > SQL Editor
+-- Migration 013: Garante callback_at e tabela expediente_logs (Idempotente)
+-- Execute no Supabase Dashboard > SQL Editor
 
 -- 1. Garante a coluna callback_at na tabela leads
 ALTER TABLE public.leads
   ADD COLUMN IF NOT EXISTS callback_at timestamptz;
-
-COMMENT ON COLUMN public.leads.callback_at IS 'Data e hora agendada para retorno de ligação com o cliente';
 
 -- 2. Tabela de Logs de Expediente
 CREATE TABLE IF NOT EXISTS public.expediente_logs (
@@ -23,23 +21,23 @@ CREATE TABLE IF NOT EXISTS public.expediente_logs (
   created_at        timestamptz DEFAULT now()
 );
 
-COMMENT ON TABLE public.expediente_logs IS 'Histórico consolidado de expedientes/turnos dos vendedores';
-
--- 3. RLS para expediente_logs
+-- 3. Habilita RLS
 ALTER TABLE public.expediente_logs ENABLE ROW LEVEL SECURITY;
 
+-- 4. Remove políticas existentes caso existam e recria com segurança
 DROP POLICY IF EXISTS "auth read expediente_logs" ON public.expediente_logs;
+DROP POLICY IF EXISTS "operator insert own expediente_logs" ON public.expediente_logs;
+DROP POLICY IF EXISTS "operator update own expediente_logs" ON public.expediente_logs;
+DROP POLICY IF EXISTS "admin delete expediente_logs" ON public.expediente_logs;
+
 CREATE POLICY "auth read expediente_logs" ON public.expediente_logs
   FOR SELECT USING (auth.role() = 'authenticated');
 
-DROP POLICY IF EXISTS "operator insert own expediente_logs" ON public.expediente_logs;
 CREATE POLICY "operator insert own expediente_logs" ON public.expediente_logs
   FOR INSERT WITH CHECK (auth.uid() = operator_id);
 
-DROP POLICY IF EXISTS "operator update own expediente_logs" ON public.expediente_logs;
 CREATE POLICY "operator update own expediente_logs" ON public.expediente_logs
   FOR UPDATE USING (auth.uid() = operator_id);
 
-DROP POLICY IF EXISTS "admin delete expediente_logs" ON public.expediente_logs;
 CREATE POLICY "admin delete expediente_logs" ON public.expediente_logs
   FOR ALL USING (public.is_admin());
