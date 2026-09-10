@@ -106,6 +106,11 @@ interface CrmValue {
   returns: number;
   hotLeads: number;
   monthlyConverted: number;
+  shiftActive: boolean;
+  shiftStartedAt: string | null;
+  shiftDurationSeconds: number;
+  startShift: () => Promise<void>;
+  finishShift: () => Promise<void>;
   blockingAlert: { message: string; action: string; onResolve: () => void } | null;
 }
 
@@ -130,6 +135,9 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
   const [returns, setReturns] = useState(0);
   const [hotLeads, setHotLeads] = useState(0);
   const [monthlyConverted, setMonthlyConverted] = useState(0);
+  const [shiftActive, setShiftActive] = useState(false);
+  const [shiftStartedAt, setShiftStartedAt] = useState<string | null>(null);
+  const [activeExpedienteId, setActiveExpedienteId] = useState<string | null>(null);
   const [pause, setPause] = useState<{ reason: string; startedAt: number; eventId?: string } | null>(null);
   const [alerts, setAlerts] = useState<string[]>([]);
   const [blockingAlertInfo, setBlockingAlertInfo] = useState<{ type: "pause" | "idle" } | null>(null);
@@ -137,7 +145,34 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
   const talkSecondsRef = useRef(0);
   const pauseSecondsRef = useRef(0);
   const activeStepIdxRef = useRef<number>(0); // which step triggered the current call
-  const fnsRef = useRef<{ endPause?: () => Promise<void>; nextLead?: () => void }>({}); 
+  const fnsRef = useRef<{ endPause?: () => Promise<void>; nextLead?: () => void }>({});
+
+  // Sync active expediente state
+  useEffect(() => {
+    async function syncExpediente() {
+      const { data } = await supabase
+        .from("expediente_logs")
+        .select("*")
+        .eq("operator_id", operatorId)
+        .is("ended_at", null)
+        .order("started_at", { ascending: false })
+        .limit(1);
+
+      if (data && data.length > 0) {
+        const active = data[0]!;
+        setShiftActive(true);
+        setShiftStartedAt(active.started_at);
+        setActiveExpedienteId(active.id);
+        setContacts(active.contacts_count ?? 0);
+        setConversions(active.conversions_count ?? 0);
+      } else {
+        setShiftActive(false);
+        setShiftStartedAt(null);
+        setActiveExpedienteId(null);
+      }
+    }
+    syncExpediente();
+  }, [operatorId]); 
 
   // Load today's session id
   useEffect(() => {
@@ -680,6 +715,56 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
 
     registerLead: (name, phone) => {
       toast.success(`Lead ${name} (${phone}) cadastrado na fila.`);
+    },
+
+    shiftActive,
+    shiftStartedAt,
+    shiftDurationSeconds: shiftStartedAt ? Math.max(0, Math.floor((now - new Date(shiftStartedAt).getTime()) / 1000)) : 0,
+
+    startShift: async () => {
+      const nowIso = new Date().toISOString();
+      await supabase.from("expediente_logs").update({ ended_at: nowIso }).eq("operator_id", operatorId).is("ended_at", null);
+
+      const { data: newLog } = await supabase.from("expediente_logs").insert({
+        operator_id: operatorId,
+        started_at: nowIso,
+        contacts_count: 0,
+        conversions_count: 0,
+        talk_seconds: 0,
+        pause_seconds: 0,
+      }).select().single();
+
+      if (newLog) setActiveExpedienteId(newLog.id);
+      setShiftActive(true);
+      setShiftStartedAt(nowIso);
+      setContacts(0);
+      setConversions(0);
+
+      await pushPresence(operatorId, { state: "ocioso", contacts_today: 0, conversions_today: 0 });
+      toast.success("Expediente iniciado! Boas vendas!");
+    },
+
+    finishShift: async () => {
+      const nowIso = new Date().toISOString();
+      if (activeExpedienteId) {
+        const startMs = shiftStartedAt ? new Date(shiftStartedAt).getTime() : Date.now();
+        const durationSec = Math.max(1, Math.floor((Date.now() - startMs) / 1000));
+
+        await supabase.from("expediente_logs").update({
+          ended_at: nowIso,
+          duration_seconds: durationSec,
+          contacts_count: contacts,
+          conversions_count: conversions,
+          talk_seconds: talkSecondsRef.current,
+          pause_seconds: pauseSecondsRef.current,
+        }).eq("id", activeExpedienteId);
+      }
+
+      setShiftActive(false);
+      setShiftStartedAt(null);
+      setActiveExpedienteId(null);
+      await pushPresence(operatorId, { state: "ocioso", current_lead: null });
+      toast.success("Expediente finalizado com sucesso!");
     },
   };
 

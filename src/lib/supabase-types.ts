@@ -392,6 +392,46 @@ export type Database = {
         };
         Relationships: [];
       };
+      expediente_logs: {
+        Row: {
+          id: string;
+          operator_id: string;
+          session_id: string | null;
+          started_at: string;
+          ended_at: string | null;
+          duration_seconds: number | null;
+          contacts_count: number | null;
+          conversions_count: number | null;
+          talk_seconds: number | null;
+          pause_seconds: number | null;
+          summary_json: Json | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          operator_id: string;
+          session_id?: string | null;
+          started_at?: string;
+          ended_at?: string | null;
+          duration_seconds?: number | null;
+          contacts_count?: number | null;
+          conversions_count?: number | null;
+          talk_seconds?: number | null;
+          pause_seconds?: number | null;
+          summary_json?: Json | null;
+          created_at?: string;
+        };
+        Update: {
+          ended_at?: string | null;
+          duration_seconds?: number | null;
+          contacts_count?: number | null;
+          conversions_count?: number | null;
+          talk_seconds?: number | null;
+          pause_seconds?: number | null;
+          summary_json?: Json | null;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -417,3 +457,5 @@ export type Lead = Database["public"]["Tables"]["leads"]["Row"];
 export type AppConfig = Database["public"]["Tables"]["app_config"]["Row"];
 export type Midia = Database["public"]["Tables"]["midias"]["Row"];
 export type PauseConfig = Database["public"]["Tables"]["pause_config"]["Row"];
+export type ExpedienteLog = Database["public"]["Tables"]["expediente_logs"]["Row"];
+

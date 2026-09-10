@@ -14,13 +14,16 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
  * Supabase client — use this everywhere in the app.
  * Automatically handles auth session persistence via localStorage.
  */
+const isServer = typeof window === "undefined";
+
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
+    persistSession: !isServer,
+    autoRefreshToken: !isServer,
+    detectSessionInUrl: !isServer,
     storageKey: "crm.supabase.session",
   },
+  ...(isServer ? { realtime: { transport: null as any } } : {}),
 });
 
 export type { Database };

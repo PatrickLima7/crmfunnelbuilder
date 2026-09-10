@@ -82,7 +82,7 @@ function Dashboard() {
   return (
     <CrmProvider operatorId={operatorId}>
       <div className="flex h-screen flex-col overflow-hidden">
-        <Topbar operator={operator} />
+        <Topbar operator={operator} operatorId={operatorId} />
         <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-[260px_minmax(0,1fr)_300px] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
           <MetricsSidebar />
           <LeadPanel operator={operator} />

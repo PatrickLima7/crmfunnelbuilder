@@ -5,6 +5,7 @@ import {
   Activity,
   ArrowLeft,
   BarChart3,
+  Clock,
   Coffee,
   FileUp,
   GripVertical,
@@ -34,6 +35,7 @@ import { RelatoriosTab } from "@/components/admin/RelatoriosTab";
 import { ConfiguracaoTab } from "@/components/admin/ConfiguracaoTab";
 import { LeadsTab } from "@/components/admin/LeadsTab";
 import { MidiasTab } from "@/components/admin/MidiasTab";
+import { ExpedientesTab } from "@/components/admin/ExpedientesTab";
 import type { ScriptStepRow } from "@/lib/supabase-types";
 
 export const Route = createFileRoute("/admin")({
@@ -220,6 +222,9 @@ function AdminPage() {
             </TabsTrigger>
             <TabsTrigger value="midias">
               <Megaphone className="size-3.5" /> Mídias
+            </TabsTrigger>
+            <TabsTrigger value="expedientes">
+              <Clock className="size-3.5" /> Logs Expediente
             </TabsTrigger>
             <TabsTrigger value="relatorios">
               <BarChart3 className="size-3.5" /> Relatórios
@@ -418,6 +423,11 @@ function AdminPage() {
           {/* ── MÍDIAS ── */}
           <TabsContent value="midias" className="mt-4">
             <MidiasTab />
+          </TabsContent>
+
+          {/* ── LOGS EXPEDIENTE ── */}
+          <TabsContent value="expedientes" className="mt-4">
+            <ExpedientesTab />
           </TabsContent>
 
           {/* ── RELATÓRIOS ── */}
