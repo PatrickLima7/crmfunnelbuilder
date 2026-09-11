@@ -466,10 +466,10 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
     },
 
     whatsappSent: async () => {
-      // step 2 = whatsapp_message (idx 2) — mark done and record event
-      setStepDone((d) => d.map((v, i) => (i === 2 ? true : v)));
+      // step 2 = whatsapp_message (idx 2) — mark all steps done and record event
+      setStepDone([true, true, true]);
       completedAt.current = Date.now();
-      toast.success("✅ Mensagem WhatsApp registrada!");
+      toast.success("✅ Mensagem WhatsApp enviada! Selecione o desfecho do lead.");
       if (lead) {
         await supabase.from("contact_events").insert({
           operator_id: operatorId,
@@ -484,6 +484,8 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
         setContacts(newContacts);
         await pushPresence(operatorId, { state: "ocioso", contacts_today: newContacts });
       }
+      // Open classification overlay for final outcome selection
+      setCallOpen(true);
     },
 
     // stepIdx = index of the step (0=call_phone, 1=call_whatsapp)
@@ -501,9 +503,10 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       const ended = new Date().toISOString();
       setCallOpen(false);
       setCallStart(null);
-      // Advance the step that triggered this call (0=call_phone, 1=call_whatsapp)
-      const stepKey = STEPS[activeStepIdxRef.current]?.key ?? "call_phone";
-      advance(stepKey as StepKey);
+
+      // Lead answered or was classified — mark ALL steps as completed so remaining steps are skipped!
+      setStepDone([true, true, true]);
+      completedAt.current = Date.now();
 
       const newContacts = contacts + 1;
       setContacts(newContacts);
@@ -595,24 +598,23 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
 
       qc.invalidateQueries({ queryKey: [...LEADS_QUERY_KEY, operatorId] });
 
-      // Automatically advance queue if lead was marked sem_interesse
-      if (outcome === "sem_interesse") {
-        setTimeout(() => {
-          if (fnsRef.current.nextLead) {
-            void fnsRef.current.nextLead();
-          }
-        }, 400);
-      }
+      // Automatically advance queue after classification
+      setTimeout(() => {
+        if (fnsRef.current.nextLead) {
+          void fnsRef.current.nextLead();
+        }
+      }, 500);
     },
 
     // stepIdx = index of the step (0=call_phone, 1=call_whatsapp)
     notAnswered: async (stepIdx: number) => {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const stepKey = STEPS[stepIdx]?.key ?? "call_phone";
-      const label = stepIdx === 1 ? "WhatsApp" : "ligação telefônica";
-      toast.warning(`Sem atendimento na ${label} — retorno agendado para amanhã.`);
-      advance(stepKey as StepKey);
+      // Mark current step as completed and advance active focus to next step
+      setStepDone((d) => d.map((v, i) => (i === stepIdx ? true : v)));
+      completedAt.current = Date.now();
+
+      const label = stepIdx === 0 ? "1ª Ligação (operadora)" : "2ª Ligação (WhatsApp)";
+      const nextStepLabel = stepIdx === 0 ? "Etapa 2 (Ligação WhatsApp)" : "Etapa 3 (Mensagem WhatsApp)";
+      toast.info(`Não atendeu na ${label} — avançando para ${nextStepLabel}.`);
 
       if (lead?.realId) {
         await supabase
@@ -620,7 +622,6 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
           .update({
             temperature: "frio",
             status: "contacted",
-            callback_at: tomorrow.toISOString(),
             updated_at: new Date().toISOString(),
           })
           .eq("id", lead.realId);
