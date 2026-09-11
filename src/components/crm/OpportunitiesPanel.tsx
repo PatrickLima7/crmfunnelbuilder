@@ -91,21 +91,52 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
   const callbacksDue = leads.filter((l) => l.callback_at && l.callback_at <= nowIso);
   const allCallbacks = leads.filter((l) => !!l.callback_at);
 
-  const visible = leads.filter((l) => {
-    let matchTab = true;
-    if (filterTab === "callbacks") matchTab = !!l.callback_at;
-    else if (filterTab === "nutricao") matchTab = l.status === "em_nutricao";
-    else if (filterTab !== "all") matchTab = l.temperature === filterTab;
-    const matchSearch = !search ||
+  const searchedLeads = leads.filter((l) => {
+    return (
+      !search ||
       l.name.toLowerCase().includes(search.toLowerCase()) ||
       (l.phone ?? "").includes(search) ||
-      (l.company ?? "").toLowerCase().includes(search.toLowerCase());
-    return matchTab && matchSearch;
+      (l.company ?? "").toLowerCase().includes(search.toLowerCase())
+    );
   });
 
-  const quente = leads.filter((l) => l.temperature === "quente").length;
-  const morno  = leads.filter((l) => l.temperature === "morno").length;
-  const frio   = leads.filter((l) => l.temperature === "frio").length;
+  const retornosSection = searchedLeads
+    .filter((l) => !!l.callback_at)
+    .sort((a, b) => new Date(a.callback_at!).getTime() - new Date(b.callback_at!).getTime());
+
+  const quentesSection = searchedLeads.filter(
+    (l) => !l.callback_at && l.temperature === "quente"
+  );
+
+  const mornosSection = searchedLeads.filter(
+    (l) => !l.callback_at && l.temperature === "morno"
+  );
+
+  const friosSection = searchedLeads.filter(
+    (l) => !l.callback_at && (l.temperature === "frio" || !l.temperature)
+  );
+
+  const nutricaoSection = searchedLeads.filter((l) => l.status === "em_nutricao");
+
+  const singleTabList =
+    filterTab === "callbacks"
+      ? retornosSection
+      : filterTab === "quente"
+        ? searchedLeads.filter((l) => l.temperature === "quente")
+        : filterTab === "morno"
+          ? searchedLeads.filter((l) => l.temperature === "morno")
+          : filterTab === "frio"
+            ? searchedLeads.filter((l) => l.temperature === "frio" || !l.temperature)
+            : filterTab === "nutricao"
+              ? nutricaoSection
+              : [];
+
+  const totalAllSections =
+    retornosSection.length + quentesSection.length + mornosSection.length + friosSection.length;
+
+  const quenteCount = leads.filter((l) => l.temperature === "quente").length;
+  const mornoCount  = leads.filter((l) => l.temperature === "morno").length;
+  const frioCount   = leads.filter((l) => l.temperature === "frio").length;
 
   return (
     <aside className="flex min-h-0 flex-col gap-2 border-border bg-sidebar p-3 lg:h-full lg:overflow-hidden lg:border-l">
@@ -154,7 +185,7 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
         {(["all", "callbacks", "quente", "morno", "frio", "nutricao"] as const).map((t) => {
           const count = t === "all" ? leads.length : t === "callbacks" ? allCallbacks.length
             : t === "nutricao" ? leads.filter(l => l.status === "em_nutricao").length
-            : t === "quente" ? quente : t === "morno" ? morno : frio;
+            : t === "quente" ? quenteCount : t === "morno" ? mornoCount : frioCount;
           const label = t === "all" ? "Todos" : t === "callbacks" ? "Retornos"
             : t === "nutricao" ? "Em Nutrição"
             : TEMP_CONFIG[t as Temperature].label;
@@ -186,30 +217,141 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
       </div>
 
       {/* Lead List */}
-      <div className="min-h-0 flex-1 overflow-y-auto space-y-2">
+      <div className="min-h-0 flex-1 overflow-y-auto space-y-4 pr-1">
         {isLoading && (
           <div className="flex h-20 items-center justify-center">
             <div className="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </div>
         )}
-        {!isLoading && visible.length === 0 && (
+
+        {!isLoading && filterTab === "all" && totalAllSections === 0 && (
           <div className="flex h-28 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border">
             <Layers className="size-6 text-muted-foreground" />
             <p className="text-xs text-muted-foreground text-center px-4">
               {leads.length === 0
-                ? "Nenhum lead cadastrado ainda. Clique em \"Novo lead\" ou \"CSV\" para importar."
+                ? 'Nenhum lead cadastrado ainda. Clique em "Novo lead" para cadastrar.'
                 : "Nenhum lead corresponde à busca."}
             </p>
           </div>
         )}
-        {visible.map((lead) => (
-          <LeadCard key={lead.id} lead={lead}
-            isSelected={crm.lead.realId === lead.id}
-            onSelect={() => crm.selectLead(lead as any)}
-            onUpdate={(updates) => updateLead.mutate({ id: lead.id, updates })}
-            operatorId={operatorId}
-          />
-        ))}
+
+        {!isLoading && filterTab !== "all" && singleTabList.length === 0 && (
+          <div className="flex h-28 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border">
+            <Layers className="size-6 text-muted-foreground" />
+            <p className="text-xs text-muted-foreground text-center px-4">
+              Nenhum lead nesta categoria.
+            </p>
+          </div>
+        )}
+
+        {/* ── Aba "Todos": Ordem Fixa (1. Retornos -> 2. Quentes -> 3. Mornos -> 4. Frios) ── */}
+        {!isLoading && filterTab === "all" && (
+          <>
+            {/* 1. Retornos */}
+            {retornosSection.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 px-1 font-bold text-[11px] text-warning uppercase tracking-wide">
+                  <Calendar className="size-3.5" />
+                  <span>Retornos Agendados ({retornosSection.length})</span>
+                </div>
+                <div className="space-y-2">
+                  {retornosSection.map((lead) => (
+                    <LeadCard
+                      key={lead.id}
+                      lead={lead}
+                      isSelected={crm.lead.realId === lead.id}
+                      onSelect={() => crm.selectLead(lead as any)}
+                      onUpdate={(updates) => updateLead.mutate({ id: lead.id, updates })}
+                      operatorId={operatorId}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 2. Quentes */}
+            {quentesSection.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 px-1 font-bold text-[11px] text-hot uppercase tracking-wide">
+                  <Flame className="size-3.5" />
+                  <span>Quentes ({quentesSection.length})</span>
+                </div>
+                <div className="space-y-2">
+                  {quentesSection.map((lead) => (
+                    <LeadCard
+                      key={lead.id}
+                      lead={lead}
+                      isSelected={crm.lead.realId === lead.id}
+                      onSelect={() => crm.selectLead(lead as any)}
+                      onUpdate={(updates) => updateLead.mutate({ id: lead.id, updates })}
+                      operatorId={operatorId}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 3. Mornos */}
+            {mornosSection.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 px-1 font-bold text-[11px] text-warm uppercase tracking-wide">
+                  <Thermometer className="size-3.5" />
+                  <span>Mornos ({mornosSection.length})</span>
+                </div>
+                <div className="space-y-2">
+                  {mornosSection.map((lead) => (
+                    <LeadCard
+                      key={lead.id}
+                      lead={lead}
+                      isSelected={crm.lead.realId === lead.id}
+                      onSelect={() => crm.selectLead(lead as any)}
+                      onUpdate={(updates) => updateLead.mutate({ id: lead.id, updates })}
+                      operatorId={operatorId}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 4. Frios */}
+            {friosSection.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 px-1 font-bold text-[11px] text-muted-foreground uppercase tracking-wide">
+                  <Snowflake className="size-3.5" />
+                  <span>Frios ({friosSection.length})</span>
+                </div>
+                <div className="space-y-2">
+                  {friosSection.map((lead) => (
+                    <LeadCard
+                      key={lead.id}
+                      lead={lead}
+                      isSelected={crm.lead.realId === lead.id}
+                      onSelect={() => crm.selectLead(lead as any)}
+                      onUpdate={(updates) => updateLead.mutate({ id: lead.id, updates })}
+                      operatorId={operatorId}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── Abas de filtro individual (Retornos, Quente, Morno, Frio, Em Nutrição) ── */}
+        {!isLoading && filterTab !== "all" && (
+          <div className="space-y-2">
+            {singleTabList.map((lead) => (
+              <LeadCard
+                key={lead.id}
+                lead={lead}
+                isSelected={crm.lead.realId === lead.id}
+                onSelect={() => crm.selectLead(lead as any)}
+                onUpdate={(updates) => updateLead.mutate({ id: lead.id, updates })}
+                operatorId={operatorId}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Summary */}
