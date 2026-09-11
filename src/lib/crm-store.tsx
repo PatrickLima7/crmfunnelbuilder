@@ -515,7 +515,8 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       const temperature = OUTCOME_TEMPERATURE[outcome];
       const newStatus =
         outcome === "convertido" ? "converted" :
-        ["sem_interesse", "numero_invalido"].includes(outcome) ? "inactive" :
+        outcome === "sem_interesse" ? "blacklisted" :
+        ["numero_invalido"].includes(outcome) ? "inactive" :
         "contacted";
 
       if (!lead) return; // safety guard
@@ -536,7 +537,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       } else if (outcome === "sem_resposta") {
         toast.warning("Sem resposta — retorno agendado para amanhã.");
       } else if (outcome === "sem_interesse") {
-        toast("Lead sem interesse — marcado como Frio.");
+        toast.warning(`🚫 Lead movido para Blacklist (${motivoDesinteresse ?? "Sem interesse"}). Avançando para o próximo lead...`);
       } else {
         toast.warning("Lead marcado como inválido/frio.");
       }
@@ -547,8 +548,8 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
           .from("leads")
           .update({
             temperature,
-            status: newStatus,
-            callback_at: callbackDateIso,
+            status: newStatus as any,
+            callback_at: outcome === "sem_interesse" ? null : callbackDateIso,
             updated_at: ended,
           })
           .eq("id", lead.realId);
@@ -593,6 +594,15 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       ]);
 
       qc.invalidateQueries({ queryKey: [...LEADS_QUERY_KEY, operatorId] });
+
+      // Automatically advance queue if lead was marked sem_interesse
+      if (outcome === "sem_interesse") {
+        setTimeout(() => {
+          if (fnsRef.current.nextLead) {
+            void fnsRef.current.nextLead();
+          }
+        }, 400);
+      }
     },
 
     // stepIdx = index of the step (0=call_phone, 1=call_whatsapp)

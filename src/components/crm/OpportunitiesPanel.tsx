@@ -22,6 +22,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useCrm } from "@/lib/crm-store";
 import { useLeads, useCreateLead, useUpdateLead, useDeleteLead, type LeadInput } from "@/hooks/useLeads";
+import { useActiveMidias } from "@/hooks/useMidias";
+import { useActiveCursos, DEFAULT_CURSO_NAME } from "@/hooks/useCursos";
+import { DateTimePicker } from "@/components/crm/DateTimePicker";
 import { LeadImportModal } from "@/components/crm/LeadImportModal";
 import type { Lead } from "@/lib/supabase-types";
 
@@ -40,6 +43,7 @@ const STATUS_LABEL: Record<Lead["status"], string> = {
   converted: "Convertido",
   inactive:  "Inativo",
   em_nutricao: "Em Nutrição",
+  blacklisted: "Blacklist",
 };
 
 const STATUS_COLOR: Record<Lead["status"], string> = {
@@ -48,6 +52,7 @@ const STATUS_COLOR: Record<Lead["status"], string> = {
   converted: "bg-success/15 text-success",
   inactive:  "bg-destructive/10 text-destructive",
   em_nutricao: "bg-purple-500/15 text-purple-500",
+  blacklisted: "bg-destructive/15 text-destructive font-bold",
 };
 
 const BR_STATES = [
@@ -349,164 +354,242 @@ function LeadCard({ lead, isSelected, onSelect, onUpdate, operatorId }: {
         )}
       </div>
 
-      {/* Scheduler */}
+      {/* Standardized Scheduler */}
       {showScheduler && (
-        <div className="mt-2 space-y-1.5 rounded-lg border border-border bg-background p-2">
-          <p className="text-[10px] font-bold uppercase text-muted-foreground">Agendar retorno:</p>
-          <div className="grid grid-cols-4 gap-1">
-            {[["Amanhã", 1], ["3 dias", 3], ["7 dias", 7], ["15 dias", 15]].map(([label, days]) => (
-              <button key={label as string} onClick={() => {
-                const d = new Date(); d.setDate(d.getDate() + (days as number));
-                onUpdate({ callback_at: d.toISOString() });
-                setShowScheduler(false);
-              }} className="rounded bg-muted px-1 py-1 text-[10px] font-semibold hover:bg-primary/20 hover:text-primary">
-                {label as string}
-              </button>
-            ))}
-          </div>
+        <div className="mt-2 space-y-2 rounded-lg border border-border bg-background p-2.5">
+          <DateTimePicker
+            label="Reagendar retorno exato:"
+            value={lead.callback_at}
+            onChange={(iso) => {
+              onUpdate({ callback_at: iso });
+              setShowScheduler(false);
+            }}
+          />
         </div>
       )}
     </div>
   );
 }
 
-// ─── LeadForm — Full 4-section form ───────────────────────────────────────────
+// ─── LeadForm — Exactly 2 Tabs: Principal & Agendamento ───────────────────────
 function LeadForm({ onSubmit, loading }: {
   onSubmit: (values: LeadInput) => Promise<void>;
   loading?: boolean;
 }) {
-  const [form, setForm] = useState<LeadInput>({ name: "", temperature: "morno", origin: "manual" });
-  const [callbackDays, setCallbackDays] = useState("0");
+  const { data: midias = [] } = useActiveMidias();
+  const { data: cursos = [] } = useActiveCursos();
 
-  const set = (key: keyof LeadInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+  const [form, setForm] = useState<LeadInput>(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(10, 0, 0, 0);
+
+    return {
+      name: "",
+      phone: "",
+      midia: "",
+      curso: DEFAULT_CURSO_NAME,
+      temperature: "morno",
+      city: "Divinópolis",
+      state: "MG",
+      origin: "manual",
+      callback_at: tomorrow.toISOString(),
+    };
+  });
+
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const set = (key: keyof LeadInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm((f) => ({ ...f, [key]: e.target.value }));
+    setErrorMsg(null);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name?.trim()) return;
-    let callback_at: string | undefined;
-    const days = parseInt(callbackDays);
-    if (days > 0) { const d = new Date(); d.setDate(d.getDate() + days); callback_at = d.toISOString(); }
-    await onSubmit({ ...form, name: form.name.trim(), ...(callback_at ? { callback_at } : {}) } as any);
-    setForm({ name: "", temperature: "morno", origin: "manual" });
-    setCallbackDays("0");
+
+    // Validation for all required fields
+    if (!form.name?.trim()) { setErrorMsg("O campo Nome é obrigatório."); return; }
+    if (!form.phone?.trim()) { setErrorMsg("O campo Telefone 1 é obrigatório."); return; }
+    if (!form.midia?.trim()) { setErrorMsg("Selecione a Origem do lead (mídia)."); return; }
+    if (!form.curso?.trim()) { setErrorMsg("Selecione o Curso procurado."); return; }
+    if (!form.temperature) { setErrorMsg("Selecione a Temperatura."); return; }
+    if (!form.city?.trim()) { setErrorMsg("O campo Cidade é obrigatório."); return; }
+    if (!form.state?.trim()) { setErrorMsg("O campo Estado é obrigatório."); return; }
+    if (!form.callback_at) { setErrorMsg("Selecione a Data e Hora de contato."); return; }
+
+    setErrorMsg(null);
+    await onSubmit({
+      ...form,
+      name: form.name.trim(),
+      phone: form.phone.trim(),
+      city: form.city.trim(),
+      state: form.state.trim(),
+      midia: form.midia,
+      curso: form.curso,
+    });
   };
 
   return (
-    <form onSubmit={handleSubmit} className="pt-1">
-      <Tabs defaultValue="pessoal" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 text-xs mb-4">
-          <TabsTrigger value="pessoal">Pessoal</TabsTrigger>
-          <TabsTrigger value="localizacao">Localização</TabsTrigger>
-          <TabsTrigger value="comercial">Comercial</TabsTrigger>
-          <TabsTrigger value="agendamento">Agendamento</TabsTrigger>
+    <form onSubmit={handleSubmit} className="pt-1 space-y-4">
+      {errorMsg && (
+        <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-2 text-xs font-bold text-destructive">
+          ⚠️ {errorMsg}
+        </div>
+      )}
+
+      <Tabs defaultValue="principal" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 text-xs mb-4">
+          <TabsTrigger value="principal">1. Principal (Dados Gerais)</TabsTrigger>
+          <TabsTrigger value="agendamento">2. Agendamento de Contato</TabsTrigger>
         </TabsList>
 
-        {/* ── Aba 1: Dados Pessoais ── */}
-        <TabsContent value="pessoal" className="space-y-3">
+        {/* ── Aba 1: Principal ── */}
+        <TabsContent value="principal" className="space-y-3">
           <div className="space-y-1.5">
-            <Label>Nome completo <span className="text-destructive">*</span></Label>
-            <Input value={form.name ?? ""} onChange={set("name")} placeholder="João da Silva" required />
+            <Label className="text-xs font-semibold">Nome completo <span className="text-destructive">*</span></Label>
+            <Input
+              value={form.name ?? ""}
+              onChange={set("name")}
+              placeholder="Ex: Carlos Eduardo Silva"
+              required
+            />
           </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold">Telefone 1 <span className="text-destructive">*</span></Label>
+            <Input
+              value={form.phone ?? ""}
+              onChange={set("phone")}
+              placeholder="(37) 99999-0000"
+              required
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Telefone principal</Label>
-              <Input value={form.phone ?? ""} onChange={set("phone")} placeholder="(11) 99999-0000" />
+              <Label className="text-xs font-semibold">Origem do lead (Mídia) <span className="text-destructive">*</span></Label>
+              <Select
+                value={form.midia ?? ""}
+                onValueChange={(v) => { setForm((f) => ({ ...f, midia: v, origin: v })); setErrorMsg(null); }}
+              >
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Selecione a mídia" />
+                </SelectTrigger>
+                <SelectContent>
+                  {midias.map((m) => (
+                    <SelectItem key={m.id} value={m.nome}>{m.nome}</SelectItem>
+                  ))}
+                  {midias.length === 0 && (
+                    <>
+                      <SelectItem value="Instagram">Instagram</SelectItem>
+                      <SelectItem value="Facebook">Facebook</SelectItem>
+                      <SelectItem value="Google Ads">Google Ads</SelectItem>
+                      <SelectItem value="Site / Landing Page">Site / Landing Page</SelectItem>
+                      <SelectItem value="Indicação">Indicação</SelectItem>
+                      <SelectItem value="WhatsApp">WhatsApp</SelectItem>
+                    </>
+                  )}
+                </SelectContent>
+              </Select>
             </div>
+
             <div className="space-y-1.5">
-              <Label>Telefone secundário</Label>
-              <Input value={form.phone2 ?? ""} onChange={set("phone2")} placeholder="(11) 98888-0000" />
+              <Label className="text-xs font-semibold">Curso procurado <span className="text-destructive">*</span></Label>
+              <Select
+                value={form.curso ?? DEFAULT_CURSO_NAME}
+                onValueChange={(v) => { setForm((f) => ({ ...f, curso: v })); setErrorMsg(null); }}
+              >
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="Selecione o curso" />
+                </SelectTrigger>
+                <SelectContent>
+                  {cursos.map((c) => (
+                    <SelectItem key={c.id} value={c.nome}>{c.nome}</SelectItem>
+                  ))}
+                  {cursos.length === 0 && (
+                    <SelectItem value={DEFAULT_CURSO_NAME}>{DEFAULT_CURSO_NAME}</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
             </div>
           </div>
+
           <div className="space-y-1.5">
-            <Label>E-mail</Label>
-            <Input type="email" value={form.email ?? ""} onChange={set("email")} placeholder="joao@email.com" />
+            <Label className="text-xs font-semibold">Temperatura <span className="text-destructive">*</span></Label>
+            <Select
+              value={form.temperature ?? "morno"}
+              onValueChange={(v) => { setForm((f) => ({ ...f, temperature: v as Temperature })); setErrorMsg(null); }}
+            >
+              <SelectTrigger className="h-9 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="quente">
+                  <span className="flex items-center gap-2">
+                    <Flame className="size-4 text-hot" /> Quente — alto interesse
+                  </span>
+                </SelectItem>
+                <SelectItem value="morno">
+                  <span className="flex items-center gap-2">
+                    <Thermometer className="size-4 text-warm" /> Morno — interesse moderado
+                  </span>
+                </SelectItem>
+                <SelectItem value="frio">
+                  <span className="flex items-center gap-2">
+                    <Snowflake className="size-4 text-muted-foreground" /> Frio — pouco interesse
+                  </span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <div className="space-y-1.5">
-            <Label>CPF</Label>
-            <Input value={form.cpf ?? ""} onChange={set("cpf")} placeholder="000.000.000-00" />
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Cidade <span className="text-destructive">*</span></Label>
+              <Input
+                value={form.city ?? "Divinópolis"}
+                onChange={set("city")}
+                placeholder="Divinópolis"
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Estado (UF) <span className="text-destructive">*</span></Label>
+              <Select
+                value={form.state ?? "MG"}
+                onValueChange={(v) => { setForm((f) => ({ ...f, state: v })); setErrorMsg(null); }}
+              >
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder="MG" />
+                </SelectTrigger>
+                <SelectContent>
+                  {BR_STATES.map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </TabsContent>
 
-        {/* ── Aba 2: Localização ── */}
-        <TabsContent value="localizacao" className="space-y-3">
-          <div className="space-y-1.5">
-            <Label>Cidade</Label>
-            <Input value={form.city ?? ""} onChange={set("city")} placeholder="São Paulo" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Estado (UF)</Label>
-            <Select value={form.state ?? ""} onValueChange={(v) => setForm((f) => ({ ...f, state: v }))}>
-              <SelectTrigger><SelectValue placeholder="Selecionar estado" /></SelectTrigger>
-              <SelectContent>
-                {BR_STATES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        </TabsContent>
+        {/* ── Aba 2: Agendamento ── */}
+        <TabsContent value="agendamento" className="space-y-4">
+          <DateTimePicker
+            label="Data e hora de primeiro contato *"
+            value={form.callback_at}
+            onChange={(iso) => setForm((f) => ({ ...f, callback_at: iso }))}
+            required
+          />
 
-        {/* ── Aba 3: Informações Comerciais ── */}
-        <TabsContent value="comercial" className="space-y-3">
-          <div className="space-y-1.5">
-            <Label>Profissão / Cargo</Label>
-            <Input value={form.profession ?? ""} onChange={set("profession")} placeholder="Enfermeiro, Gerente, Autônomo…" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Empresa</Label>
-            <Input value={form.company ?? ""} onChange={set("company")} placeholder="Nome da empresa do lead" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Origem do lead <span className="text-destructive">*</span></Label>
-            <Select value={form.origin ?? "manual"} onValueChange={(v) => setForm((f) => ({ ...f, origin: v }))}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {ORIGINS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Temperatura <span className="text-destructive">*</span></Label>
-            <Select value={form.temperature ?? "morno"} onValueChange={(v) => setForm((f) => ({ ...f, temperature: v as Temperature }))}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="quente"><span className="flex items-center gap-2"><Flame className="size-4 text-hot" /> Quente — alto interesse</span></SelectItem>
-                <SelectItem value="morno"><span className="flex items-center gap-2"><Thermometer className="size-4 text-warm" /> Morno — interesse moderado</span></SelectItem>
-                <SelectItem value="frio"><span className="flex items-center gap-2"><Snowflake className="size-4 text-muted-foreground" /> Frio — pouco interesse</span></SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </TabsContent>
-
-        {/* ── Aba 4: Agendamento ── */}
-        <TabsContent value="agendamento" className="space-y-3">
-          <div className="space-y-1.5">
-            <Label>Agendar retorno inicial</Label>
-            <Select value={callbackDays} onValueChange={setCallbackDays}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="0">Sem retorno agendado</SelectItem>
-                <SelectItem value="1">Retornar amanhã</SelectItem>
-                <SelectItem value="3">Retornar em 3 dias</SelectItem>
-                <SelectItem value="7">Retornar em 7 dias</SelectItem>
-                <SelectItem value="15">Retornar em 15 dias</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Observações</Label>
-            <Textarea
-              rows={4}
-              value={form.notes ?? ""}
-              onChange={set("notes")}
-              placeholder="Interesse no produto X, melhor horário para ligar, objeções mencionadas…"
-              className="resize-none"
-            />
+          <div className="rounded-lg bg-muted/40 p-3 border border-border text-xs text-muted-foreground">
+            💡 O consultor pode agendar livremente para qualquer data e horário futuro.
           </div>
         </TabsContent>
       </Tabs>
 
-      <Button type="submit" className="mt-4 w-full" disabled={loading || !form.name?.trim()}>
-        {loading ? "Cadastrando..." : "Cadastrar lead"}
+      <Button type="submit" className="mt-4 w-full" disabled={loading}>
+        {loading ? "Cadastrando Lead..." : "Cadastrar Lead"}
       </Button>
     </form>
   );

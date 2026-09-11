@@ -8,6 +8,7 @@ import {
   Clock,
   Coffee,
   FileUp,
+  GraduationCap,
   GripVertical,
   LogOut,
   Megaphone,
@@ -36,6 +37,7 @@ import { ConfiguracaoTab } from "@/components/admin/ConfiguracaoTab";
 import { LeadsTab } from "@/components/admin/LeadsTab";
 import { MidiasTab } from "@/components/admin/MidiasTab";
 import { ExpedientesTab } from "@/components/admin/ExpedientesTab";
+import { CursosTab } from "@/components/admin/CursosTab";
 import type { ScriptStepRow } from "@/lib/supabase-types";
 
 export const Route = createFileRoute("/admin")({
@@ -222,6 +224,9 @@ function AdminPage() {
             </TabsTrigger>
             <TabsTrigger value="midias">
               <Megaphone className="size-3.5" /> Mídias
+            </TabsTrigger>
+            <TabsTrigger value="cursos">
+              <GraduationCap className="size-3.5" /> Cursos
             </TabsTrigger>
             <TabsTrigger value="expedientes">
               <Clock className="size-3.5" /> Logs Expediente
@@ -423,6 +428,11 @@ function AdminPage() {
           {/* ── MÍDIAS ── */}
           <TabsContent value="midias" className="mt-4">
             <MidiasTab />
+          </TabsContent>
+
+          {/* ── CURSOS ── */}
+          <TabsContent value="cursos" className="mt-4">
+            <CursosTab />
           </TabsContent>
 
           {/* ── LOGS EXPEDIENTE ── */}

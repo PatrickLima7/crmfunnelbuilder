@@ -227,7 +227,7 @@ export type Database = {
           state: string | null;
           profession: string | null;
           company: string | null;
-          status: "pending" | "contacted" | "converted" | "inactive" | "em_nutricao";
+          status: "pending" | "contacted" | "converted" | "inactive" | "em_nutricao" | "blacklisted";
           temperature: "quente" | "morno" | "frio";
           origin: string;
           assigned_to: string | null;
@@ -432,6 +432,28 @@ export type Database = {
         };
         Relationships: [];
       };
+      cursos: {
+        Row: {
+          id: string;
+          nome: string;
+          ativo: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          nome: string;
+          ativo?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          nome?: string;
+          ativo?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -458,4 +480,5 @@ export type AppConfig = Database["public"]["Tables"]["app_config"]["Row"];
 export type Midia = Database["public"]["Tables"]["midias"]["Row"];
 export type PauseConfig = Database["public"]["Tables"]["pause_config"]["Row"];
 export type ExpedienteLog = Database["public"]["Tables"]["expediente_logs"]["Row"];
+export type Curso = Database["public"]["Tables"]["cursos"]["Row"];
 

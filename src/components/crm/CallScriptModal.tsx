@@ -17,6 +17,7 @@ import { useCrm } from "@/lib/crm-store";
 import { useScript } from "@/hooks/useScript";
 import { CALL_OUTCOMES, SCRIPT_STEPS as FALLBACK_STEPS, SEM_INTERESSE_MOTIVOS, type CallOutcome, type SemInteresseMotivo } from "@/lib/call-script";
 import { formatClock } from "@/lib/crm-data";
+import { DateTimePicker } from "@/components/crm/DateTimePicker";
 
 export function CallScriptModal() {
   const crm = useCrm();
@@ -39,12 +40,12 @@ export function CallScriptModal() {
   const [asking, setAsking] = useState(false);
   const [outcome, setOutcome] = useState<CallOutcome | null>(null);
   const [semInteresseMotivo, setSemInteresseMotivo] = useState<SemInteresseMotivo | null>(null);
-  const [returnDate, setReturnDate] = useState<string>(() => {
+  const [callbackIso, setCallbackIso] = useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
-    return d.toISOString().split("T")[0]!;
+    d.setHours(10, 0, 0, 0);
+    return d.toISOString();
   });
-  const [returnTime, setReturnTime] = useState<string>("10:00");
   const [retornoError, setRetornoError] = useState<string | null>(null);
 
   const safeIndex = Math.min(index, Math.max(0, steps.length - 1));
@@ -61,8 +62,8 @@ export function CallScriptModal() {
     setSemInteresseMotivo(null);
     const d = new Date();
     d.setDate(d.getDate() + 1);
-    setReturnDate(d.toISOString().split("T")[0]!);
-    setReturnTime("10:00");
+    d.setHours(10, 0, 0, 0);
+    setCallbackIso(d.toISOString());
     setRetornoError(null);
   };
 
@@ -84,17 +85,12 @@ export function CallScriptModal() {
       return;
     }
 
-    let callbackIso: string | undefined = undefined;
+    let selectedCallbackIso: string | undefined = undefined;
 
     // All outcomes except convertido and sem_interesse need optional/required scheduling
     if (needsScheduling) {
-      if (returnDate && returnTime) {
-        const selected = new Date(`${returnDate}T${returnTime}`);
-        if (selected < new Date()) {
-          setRetornoError("A data/hora de retorno deve ser no futuro.");
-          return;
-        }
-        callbackIso = selected.toISOString();
+      if (callbackIso) {
+        selectedCallbackIso = callbackIso;
       } else if (outcome === "retorno") {
         setRetornoError("Por favor, selecione data e hora de retorno.");
         return;
@@ -102,7 +98,7 @@ export function CallScriptModal() {
     }
 
     setRetornoError(null);
-    await crm.finishCall(outcome, callbackIso);
+    await crm.finishCall(outcome, selectedCallbackIso);
     reset();
   };
 
@@ -313,35 +309,18 @@ export function CallScriptModal() {
                 </div>
               )}
 
-              {/* All other outcomes except convertido: data/hora de retorno */}
+              {/* Standardized DateTimePicker Component */}
               {needsScheduling && (
-                <div className="space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
-                  <p className="text-xs font-bold text-primary">
-                    📅 Definir data e hora do retorno {outcome === "retorno" ? "(obrigatório)" : "(opcional)"}:
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[10px] font-semibold text-muted-foreground uppercase">Data</label>
-                      <input
-                        type="date"
-                        value={returnDate}
-                        onChange={(e) => { setReturnDate(e.target.value); setRetornoError(null); }}
-                        className="mt-1 w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-foreground"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-semibold text-muted-foreground uppercase">Hora</label>
-                      <input
-                        type="time"
-                        value={returnTime}
-                        onChange={(e) => { setReturnTime(e.target.value); setRetornoError(null); }}
-                        className="mt-1 w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-foreground"
-                      />
-                    </div>
-                  </div>
-                  {retornoError && (
-                    <p className="text-xs font-bold text-destructive">{retornoError}</p>
-                  )}
+                <div className="space-y-2 rounded-xl border border-primary/30 bg-primary/5 p-3">
+                  <DateTimePicker
+                    label={`Definir data e hora do retorno ${outcome === "retorno" ? "(obrigatório)" : "(opcional)"}`}
+                    value={callbackIso}
+                    onChange={(iso) => {
+                      setCallbackIso(iso);
+                      setRetornoError(null);
+                    }}
+                    error={retornoError}
+                  />
                 </div>
               )}
 

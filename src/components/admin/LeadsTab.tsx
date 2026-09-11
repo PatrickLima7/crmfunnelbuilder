@@ -352,6 +352,7 @@ export function LeadsTab() {
                 <SelectItem value="converted">Convertido</SelectItem>
                 <SelectItem value="inactive">Inativo</SelectItem>
                 <SelectItem value="em_nutricao">Em Nutrição</SelectItem>
+                <SelectItem value="blacklisted">🚫 Blacklist (Sem Interesse)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -403,39 +404,87 @@ export function LeadsTab() {
                     <span className={`rounded px-1.5 py-0.5 text-[10px] ${
                       l.status === "converted" ? "bg-success/15 text-success" :
                       l.status === "contacted" ? "bg-info/15 text-info" :
-                      l.status === "em_nutricao" ? "bg-primary/15 text-primary" :
+                      l.status === "em_nutricao" ? "bg-purple-500/15 text-purple-500" :
+                      l.status === "blacklisted" ? "bg-destructive/15 text-destructive font-bold" :
                       "bg-muted text-muted-foreground"
                     }`}>
-                      {l.status === "em_nutricao" ? "Em Nutrição" : l.status}
+                      {l.status === "blacklisted" ? "🚫 Blacklist" : l.status === "em_nutricao" ? "Em Nutrição" : l.status}
                     </span>
                   </td>
-                  <td className="px-3 py-2.5 text-muted-foreground">
+                  <td className="px-3 py-2 text-[11px]">
                     {l.assigned_profile?.name ?? "Não atribuído"}
                   </td>
-                  <td className="px-3 py-2.5 text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button size="icon" variant="ghost" className="size-7" onClick={() => setViewLead(l)} title="Consultar detalhes">
+                  <td className="px-3 py-2 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      {l.status === "blacklisted" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-[10px] text-success border-success/40 bg-success/10 hover:bg-success/20"
+                          title="Reativar lead e voltar para a fila pendente"
+                          onClick={async () => {
+                            await supabase.from("leads").update({ status: "pending" }).eq("id", l.id);
+                            qc.invalidateQueries({ queryKey: ["admin-leads"] });
+                            toast.success(`Lead "${l.name}" reativado para status Pendente!`);
+                          }}
+                        >
+                          <RefreshCw className="size-3 mr-1" /> Reativar
+                        </Button>
+                      )}
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-7"
+                        title="Ver detalhes"
+                        onClick={() => setViewLead(l)}
+                      >
                         <Eye className="size-3.5" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="size-7" onClick={() => setEditLead({ ...l })} title="Editar lead">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-7"
+                        title="Editar lead"
+                        onClick={() => {
+                          setEditLead(l);
+                          setForm({
+                            name: l.name ?? "",
+                            phone: l.phone ?? "",
+                            phone2: l.phone2 ?? "",
+                            telefone_3: l.telefone_3 ?? "",
+                            telefone_4: l.telefone_4 ?? "",
+                            email: l.email ?? "",
+                            curso: l.curso ?? "",
+                            midia: l.midia ?? "",
+                            campanha: l.campanha ?? "",
+                            hr_para_contato: l.hr_para_contato ?? "",
+                            observacao: l.observacao ?? "",
+                            informacao: l.informacao ?? "",
+                            assigned_to: l.assigned_to ?? "",
+                          });
+                        }}
+                      >
                         <Edit className="size-3.5" />
                       </Button>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
-                          <Button size="icon" variant="ghost" className="size-7 text-destructive hover:bg-destructive/10" title="Excluir lead">
+                          <Button size="icon" variant="ghost" className="size-7 text-destructive hover:text-destructive">
                             <Trash2 className="size-3.5" />
                           </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>Excluir Lead</AlertDialogTitle>
+                            <AlertDialogTitle>Excluir lead?</AlertDialogTitle>
                             <AlertDialogDescription>
-                              Tem certeza que deseja excluir o lead <b>{l.name}</b>? Esta ação não pode ser desfeita.
+                              "{l.name}" será excluído permanentemente do banco de dados.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => deleteMutation.mutate(l.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            <AlertDialogAction
+                              className="bg-destructive text-destructive-foreground"
+                              onClick={() => deleteMutation.mutate(l.id)}
+                            >
                               Excluir
                             </AlertDialogAction>
                           </AlertDialogFooter>
