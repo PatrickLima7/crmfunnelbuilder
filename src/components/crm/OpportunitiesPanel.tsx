@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   Bell, Calendar, Clock, Flame, FileUp, Layers,
   PhoneCall, Plus, Search, Snowflake, Thermometer,
-  Trash2, X, Sprout,
+  Trash2, X, Sprout, Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +39,7 @@ const TEMP_CONFIG: Record<Temperature, { label: string; icon: React.ElementType;
 
 const STATUS_LABEL: Record<Lead["status"], string> = {
   pending:   "Pendente",
+  novo:      "Novo Lead",
   contacted: "Contatado",
   converted: "Convertido",
   inactive:  "Inativo",
@@ -48,6 +49,7 @@ const STATUS_LABEL: Record<Lead["status"], string> = {
 
 const STATUS_COLOR: Record<Lead["status"], string> = {
   pending:   "bg-muted text-muted-foreground",
+  novo:      "bg-primary/15 text-primary border-primary/30 font-bold",
   contacted: "bg-info/15 text-info",
   converted: "bg-success/15 text-success",
   inactive:  "bg-destructive/10 text-destructive",
@@ -83,7 +85,7 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
   const updateLead = useUpdateLead(operatorId);
 
   const [search, setSearch] = useState("");
-  const [filterTab, setFilterTab] = useState<Temperature | "all" | "callbacks" | "nutricao">("all");
+  const [filterTab, setFilterTab] = useState<"novo" | "callbacks" | "quente" | "morno" | "frio" | "nutricao" | "all">("all");
   const [openForm, setOpenForm] = useState(false);
   const [openImport, setOpenImport] = useState(false);
 
@@ -100,43 +102,50 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
     );
   });
 
+  const novosSection = searchedLeads.filter(
+    (l) => l.status === "novo" || l.status === "pending"
+  );
+
   const retornosSection = searchedLeads
-    .filter((l) => !!l.callback_at)
+    .filter((l) => !!l.callback_at && l.status !== "novo" && l.status !== "pending")
     .sort((a, b) => new Date(a.callback_at!).getTime() - new Date(b.callback_at!).getTime());
 
   const quentesSection = searchedLeads.filter(
-    (l) => !l.callback_at && l.temperature === "quente"
+    (l) => !l.callback_at && l.temperature === "quente" && l.status !== "novo" && l.status !== "pending" && l.status !== "em_nutricao"
   );
 
   const mornosSection = searchedLeads.filter(
-    (l) => !l.callback_at && l.temperature === "morno"
+    (l) => !l.callback_at && l.temperature === "morno" && l.status !== "novo" && l.status !== "pending" && l.status !== "em_nutricao"
   );
 
   const friosSection = searchedLeads.filter(
-    (l) => !l.callback_at && (l.temperature === "frio" || !l.temperature)
+    (l) => !l.callback_at && (l.temperature === "frio" || !l.temperature) && l.status !== "novo" && l.status !== "pending" && l.status !== "em_nutricao"
   );
 
   const nutricaoSection = searchedLeads.filter((l) => l.status === "em_nutricao");
 
   const singleTabList =
-    filterTab === "callbacks"
-      ? retornosSection
-      : filterTab === "quente"
-        ? searchedLeads.filter((l) => l.temperature === "quente")
-        : filterTab === "morno"
-          ? searchedLeads.filter((l) => l.temperature === "morno")
-          : filterTab === "frio"
-            ? searchedLeads.filter((l) => l.temperature === "frio" || !l.temperature)
-            : filterTab === "nutricao"
-              ? nutricaoSection
-              : [];
+    filterTab === "novo"
+      ? novosSection
+      : filterTab === "callbacks"
+        ? retornosSection
+        : filterTab === "quente"
+          ? quentesSection
+          : filterTab === "morno"
+            ? mornosSection
+            : filterTab === "frio"
+              ? friosSection
+              : filterTab === "nutricao"
+                ? nutricaoSection
+                : [];
 
   const totalAllSections =
-    retornosSection.length + quentesSection.length + mornosSection.length + friosSection.length;
+    novosSection.length + retornosSection.length + quentesSection.length + mornosSection.length + friosSection.length + nutricaoSection.length;
 
-  const quenteCount = leads.filter((l) => l.temperature === "quente").length;
-  const mornoCount  = leads.filter((l) => l.temperature === "morno").length;
-  const frioCount   = leads.filter((l) => l.temperature === "frio").length;
+  const novoCount = leads.filter((l) => l.status === "novo" || l.status === "pending").length;
+  const quenteCount = leads.filter((l) => l.temperature === "quente" && l.status !== "novo" && l.status !== "pending").length;
+  const mornoCount  = leads.filter((l) => l.temperature === "morno" && l.status !== "novo" && l.status !== "pending").length;
+  const frioCount   = leads.filter((l) => l.temperature === "frio" && l.status !== "novo" && l.status !== "pending").length;
 
   return (
     <aside className="flex min-h-0 flex-col gap-2 border-border bg-sidebar p-3 lg:h-full lg:overflow-hidden lg:border-l">
@@ -180,16 +189,32 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
         </button>
       )}
 
-      {/* Filter Pills */}
+      {/* Filter Pills — Sequência Fixa: Novo Lead -> Retornos -> Quente -> Morno -> Frio -> Em Nutrição -> Todos */}
       <div className="flex shrink-0 flex-wrap gap-1.5">
-        {(["all", "callbacks", "quente", "morno", "frio", "nutricao"] as const).map((t) => {
-          const count = t === "all" ? leads.length : t === "callbacks" ? allCallbacks.length
-            : t === "nutricao" ? leads.filter(l => l.status === "em_nutricao").length
-            : t === "quente" ? quenteCount : t === "morno" ? mornoCount : frioCount;
-          const label = t === "all" ? "Todos" : t === "callbacks" ? "Retornos"
-            : t === "nutricao" ? "Em Nutrição"
-            : TEMP_CONFIG[t as Temperature].label;
-          const Icon = t === "callbacks" ? Calendar : t === "nutricao" ? Sprout : t !== "all" ? TEMP_CONFIG[t as Temperature].icon : null;
+        {(["novo", "callbacks", "quente", "morno", "frio", "nutricao", "all"] as const).map((t) => {
+          const count =
+            t === "novo" ? novoCount :
+            t === "callbacks" ? allCallbacks.length :
+            t === "quente" ? quenteCount :
+            t === "morno" ? mornoCount :
+            t === "frio" ? frioCount :
+            t === "nutricao" ? leads.filter(l => l.status === "em_nutricao").length :
+            leads.length;
+
+          const label =
+            t === "novo" ? "Novo Lead" :
+            t === "callbacks" ? "Retornos" :
+            t === "nutricao" ? "Em Nutrição" :
+            t === "all" ? "Todos" :
+            TEMP_CONFIG[t as Temperature].label;
+
+          const Icon =
+            t === "novo" ? Sparkles :
+            t === "callbacks" ? Calendar :
+            t === "nutricao" ? Sprout :
+            t === "all" ? Layers :
+            TEMP_CONFIG[t as Temperature].icon;
+
           const active = filterTab === t;
           return (
             <button key={t} onClick={() => setFilterTab(t)}
@@ -244,10 +269,32 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
           </div>
         )}
 
-        {/* ── Aba "Todos": Ordem Fixa (1. Retornos -> 2. Quentes -> 3. Mornos -> 4. Frios) ── */}
+        {/* ── Aba "Todos": Ordem Fixa de Prioridade (1. Novo Lead -> 2. Retornos -> 3. Quentes -> 4. Mornos -> 5. Frios -> 6. Em Nutrição) ── */}
         {!isLoading && filterTab === "all" && (
           <>
-            {/* 1. Retornos */}
+            {/* 1. Novo Lead */}
+            {novosSection.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 px-1 font-bold text-[11px] text-primary uppercase tracking-wide">
+                  <Sparkles className="size-3.5" />
+                  <span>Novos Leads ({novosSection.length})</span>
+                </div>
+                <div className="space-y-2">
+                  {novosSection.map((lead) => (
+                    <LeadCard
+                      key={lead.id}
+                      lead={lead}
+                      isSelected={crm.lead.realId === lead.id}
+                      onSelect={() => crm.selectLead(lead as any)}
+                      onUpdate={(updates) => updateLead.mutate({ id: lead.id, updates })}
+                      operatorId={operatorId}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 2. Retornos */}
             {retornosSection.length > 0 && (
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5 px-1 font-bold text-[11px] text-warning uppercase tracking-wide">
@@ -269,7 +316,7 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
               </div>
             )}
 
-            {/* 2. Quentes */}
+            {/* 3. Quentes */}
             {quentesSection.length > 0 && (
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5 px-1 font-bold text-[11px] text-hot uppercase tracking-wide">
@@ -291,7 +338,7 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
               </div>
             )}
 
-            {/* 3. Mornos */}
+            {/* 4. Mornos */}
             {mornosSection.length > 0 && (
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5 px-1 font-bold text-[11px] text-warm uppercase tracking-wide">
@@ -313,7 +360,7 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
               </div>
             )}
 
-            {/* 4. Frios */}
+            {/* 5. Frios */}
             {friosSection.length > 0 && (
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5 px-1 font-bold text-[11px] text-muted-foreground uppercase tracking-wide">
@@ -322,6 +369,28 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
                 </div>
                 <div className="space-y-2">
                   {friosSection.map((lead) => (
+                    <LeadCard
+                      key={lead.id}
+                      lead={lead}
+                      isSelected={crm.lead.realId === lead.id}
+                      onSelect={() => crm.selectLead(lead as any)}
+                      onUpdate={(updates) => updateLead.mutate({ id: lead.id, updates })}
+                      operatorId={operatorId}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 6. Em Nutrição */}
+            {nutricaoSection.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5 px-1 font-bold text-[11px] text-purple-500 uppercase tracking-wide">
+                  <Sprout className="size-3.5" />
+                  <span>Em Nutrição ({nutricaoSection.length})</span>
+                </div>
+                <div className="space-y-2">
+                  {nutricaoSection.map((lead) => (
                     <LeadCard
                       key={lead.id}
                       lead={lead}

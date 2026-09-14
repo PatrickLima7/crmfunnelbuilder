@@ -227,7 +227,7 @@ export type Database = {
           state: string | null;
           profession: string | null;
           company: string | null;
-          status: "pending" | "contacted" | "converted" | "inactive" | "em_nutricao" | "blacklisted";
+          status: "pending" | "novo" | "contacted" | "converted" | "inactive" | "em_nutricao" | "blacklisted";
           temperature: "quente" | "morno" | "frio";
           origin: string;
           assigned_to: string | null;
@@ -265,7 +265,7 @@ export type Database = {
           state?: string | null;
           profession?: string | null;
           company?: string | null;
-          status?: "pending" | "contacted" | "converted" | "inactive" | "em_nutricao";
+          status?: "pending" | "novo" | "contacted" | "converted" | "inactive" | "em_nutricao" | "blacklisted";
           temperature?: "quente" | "morno" | "frio";
           origin?: string;
           assigned_to?: string | null;
@@ -302,7 +302,7 @@ export type Database = {
           state?: string | null;
           profession?: string | null;
           company?: string | null;
-          status?: "pending" | "contacted" | "converted" | "inactive" | "em_nutricao";
+          status?: "pending" | "novo" | "contacted" | "converted" | "inactive" | "em_nutricao" | "blacklisted";
           temperature?: "quente" | "morno" | "frio";
           origin?: string;
           assigned_to?: string | null;
@@ -323,6 +323,8 @@ export type Database = {
           telefone_3?: string | null;
           telefone_4?: string | null;
           identificacao?: string | null;
+          data_primeiro_cadastro?: string;
+          data_ultimo_cadastro?: string;
           data_ultimo_contato?: string | null;
           updated_at?: string;
         };

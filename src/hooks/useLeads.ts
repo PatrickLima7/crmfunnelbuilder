@@ -51,12 +51,49 @@ export function useCreateLead(operatorId: string) {
   return useMutation({
     mutationFn: async (lead: LeadInput) => {
       const now = new Date().toISOString();
+      const phoneClean = lead.phone ? lead.phone.trim() : null;
+
+      // Check if lead already exists by phone for re-registration
+      if (phoneClean) {
+        const { data: existing } = await supabase
+          .from("leads")
+          .select("*")
+          .eq("phone", phoneClean)
+          .maybeSingle();
+
+        if (existing) {
+          const currentHistory = (existing.historico as Array<{ ts: string; acao: string; detalhes?: string }>) ?? [];
+          const newEntry = {
+            ts: now,
+            acao: "recadastro",
+            detalhes: `Lead recadastrado no sistema via ${lead.origin ?? "manual"}`,
+          };
+
+          const { data: updated, error: updateErr } = await supabase
+            .from("leads")
+            .update({
+              status: "novo" as any,
+              temperature: lead.temperature ?? existing.temperature,
+              data_ultimo_cadastro: now,
+              historico: [...currentHistory, newEntry],
+              assigned_to: operatorId || existing.assigned_to,
+              updated_at: now,
+            })
+            .eq("id", existing.id)
+            .select()
+            .single();
+
+          if (updateErr) throw updateErr;
+          return updated;
+        }
+      }
+
       const initialHistory = [{
         ts: now,
         acao: "cadastro",
-        detalhes: `Lead cadastrado via ${lead.origin ?? 'manual'}`
+        detalhes: `Lead cadastrado via ${lead.origin ?? "manual"}`,
       }];
-      
+
       const { data, error } = await supabase
         .from("leads")
         .insert({
@@ -71,7 +108,7 @@ export function useCreateLead(operatorId: string) {
           company: lead.company || null,
           temperature: lead.temperature ?? "morno",
           origin: lead.origin ?? "manual",
-          status: "pending",
+          status: "novo" as any,
           assigned_to: operatorId,
           notes: lead.notes || null,
           callback_at: lead.callback_at || null,
@@ -92,7 +129,7 @@ export function useCreateLead(operatorId: string) {
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: [...LEADS_QUERY_KEY, operatorId] });
-      toast.success(`Lead "${data.name}" cadastrado!`);
+      toast.success(`Lead "${data.name}" registrado como Novo Lead!`);
     },
     onError: (err: Error) => {
       toast.error(`Erro ao cadastrar: ${err.message}`);
@@ -105,6 +142,7 @@ export function useImportLeads(operatorId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (leads: LeadInput[]) => {
+      const now = new Date().toISOString();
       const rows = leads.map((l) => ({
         name: l.name,
         phone: l.phone || null,
@@ -117,7 +155,7 @@ export function useImportLeads(operatorId: string) {
         company: l.company || null,
         temperature: (l.temperature ?? "frio") as "quente" | "morno" | "frio",
         origin: l.origin ?? "csv",
-        status: "pending" as const,
+        status: "novo" as const,
         assigned_to: operatorId,
         notes: l.notes || null,
         callback_at: l.callback_at || null,
@@ -127,9 +165,9 @@ export function useImportLeads(operatorId: string) {
         data_nascimento: l.data_nascimento || null,
         genero: l.genero || null,
         cep: l.cep || null,
-        historico: [{ ts: new Date().toISOString(), acao: "importacao_csv", detalhes: "Importado via CSV" }],
-        data_primeiro_cadastro: new Date().toISOString(),
-        data_ultimo_cadastro: new Date().toISOString(),
+        historico: [{ ts: now, acao: "importacao_csv", detalhes: "Importado via CSV" }],
+        data_primeiro_cadastro: now,
+        data_ultimo_cadastro: now,
       }));
 
       // Insert in batches of 100 to avoid payload limits
@@ -310,7 +348,7 @@ export function useSeedSampleLeads(operatorId: string) {
         company: s.company ?? null,
         temperature: s.temperature ?? "morno",
         origin: "teste_ficticio",
-        status: "pending" as const,
+        status: "novo" as const,
         assigned_to: operatorId,
         notes: s.notes ?? null,
         midia: s.midia ?? null,

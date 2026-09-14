@@ -25,6 +25,82 @@ async function pushPresence(
     .eq("operator_id", operatorId);
 }
 
+// ─── Priority Queue Fetcher ───────────────────────────────────────────────────
+// Sequence: 1. Novo Lead -> 2. Retornos Agendados -> 3. Quente -> 4. Morno -> 5. Frio -> 6. Em Nutrição
+async function fetchNextPriorityLead(operatorId: string) {
+  // 1. Novo Lead (novo / pending)
+  const { data: novos } = await supabase
+    .from("leads")
+    .select("*")
+    .eq("assigned_to", operatorId)
+    .in("status", ["novo", "pending"])
+    .order("created_at", { ascending: true })
+    .limit(1);
+
+  if (novos && novos.length > 0) return novos[0]!;
+
+  // 2. Retornos Agendados (callback_at set)
+  const { data: retornos } = await supabase
+    .from("leads")
+    .select("*")
+    .eq("assigned_to", operatorId)
+    .not("callback_at", "is", null)
+    .in("status", ["contacted", "novo", "pending"])
+    .order("callback_at", { ascending: true })
+    .limit(1);
+
+  if (retornos && retornos.length > 0) return retornos[0]!;
+
+  // 3. Quente (temperature = 'quente')
+  const { data: quentes } = await supabase
+    .from("leads")
+    .select("*")
+    .eq("assigned_to", operatorId)
+    .eq("temperature", "quente")
+    .in("status", ["contacted", "pending"])
+    .order("updated_at", { ascending: true })
+    .limit(1);
+
+  if (quentes && quentes.length > 0) return quentes[0]!;
+
+  // 4. Morno (temperature = 'morno')
+  const { data: mornos } = await supabase
+    .from("leads")
+    .select("*")
+    .eq("assigned_to", operatorId)
+    .eq("temperature", "morno")
+    .in("status", ["contacted", "pending"])
+    .order("updated_at", { ascending: true })
+    .limit(1);
+
+  if (mornos && mornos.length > 0) return mornos[0]!;
+
+  // 5. Frio (temperature = 'frio')
+  const { data: frios } = await supabase
+    .from("leads")
+    .select("*")
+    .eq("assigned_to", operatorId)
+    .eq("temperature", "frio")
+    .in("status", ["contacted", "pending"])
+    .order("updated_at", { ascending: true })
+    .limit(1);
+
+  if (frios && frios.length > 0) return frios[0]!;
+
+  // 6. Em Nutrição (status = 'em_nutricao')
+  const { data: nutricao } = await supabase
+    .from("leads")
+    .select("*")
+    .eq("assigned_to", operatorId)
+    .eq("status", "em_nutricao")
+    .order("updated_at", { ascending: true })
+    .limit(1);
+
+  if (nutricao && nutricao.length > 0) return nutricao[0]!;
+
+  return null;
+}
+
 export interface ProgressPoint {
   label: string;
   contatos: number;
@@ -112,6 +188,9 @@ interface CrmValue {
   startShift: () => Promise<void>;
   finishShift: () => Promise<void>;
   blockingAlert: { message: string; action: string; onResolve: () => void } | null;
+  step3ScheduleOpen: boolean;
+  finishStep3Schedule: (callbackAtIso: string) => Promise<void>;
+  closeStep3Schedule: () => void;
 }
 
 const CrmContext = createContext<CrmValue | null>(null);
@@ -141,6 +220,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
   const [pause, setPause] = useState<{ reason: string; startedAt: number; eventId?: string } | null>(null);
   const [alerts, setAlerts] = useState<string[]>([]);
   const [blockingAlertInfo, setBlockingAlertInfo] = useState<{ type: "pause" | "idle" } | null>(null);
+  const [step3ScheduleOpen, setStep3ScheduleOpen] = useState(false);
   const sessionIdRef = useRef<string | null>(null);
   const talkSecondsRef = useRef(0);
   const pauseSecondsRef = useRef(0);
@@ -186,27 +266,19 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       .then(({ data }) => { if (data) sessionIdRef.current = data.id; });
   }, [operatorId]);
 
-  // Load initial real lead from Supabase (if available)
+  // Load initial real lead from Supabase according to Priority Order (Novo Lead -> Retornos -> Quente -> Morno -> Frio -> Em Nutrição)
   useEffect(() => {
     async function loadFirstLead() {
-      const { data } = await supabase
-        .from("leads")
-        .select("*")
-        .eq("assigned_to", operatorId)
-        .in("status", ["pending", "contacted"])
-        .order("callback_at", { ascending: true, nullsFirst: true })
-        .order("created_at", { ascending: true })
-        .limit(1);
+      const target = await fetchNextPriorityLead(operatorId);
 
-      if (data && data.length > 0) {
-        const target = data[0]!;
+      if (target) {
         setLead({
           id: `lead-${target.id}`,
           realId: target.id,
           name: target.name,
           phone: target.phone ?? "",
           profession: target.profession ?? "Cliente cadastrado",
-          isNew: false,
+          isNew: target.status === "novo" || target.status === "pending",
           status: (target.temperature ?? "morno") as LeadStatus,
           returnTime: "10:00",
           email: target.email,
@@ -422,6 +494,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
     returns,
     hotLeads,
     monthlyConverted,
+    step3ScheduleOpen,
     blockingAlert: blockingAlertInfo ? {
       message: blockingAlertInfo.type === "pause" 
         ? "Sua pausa já ultrapassou 2 horas. Isso é acima do limite máximo permitido."
@@ -469,7 +542,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       // step 2 = whatsapp_message (idx 2) — mark all steps done and record event
       setStepDone([true, true, true]);
       completedAt.current = Date.now();
-      toast.success("✅ Mensagem WhatsApp enviada! Avançando para o próximo lead...");
+      toast.info("✅ Mensagem WhatsApp enviada! Defina a data e horário do próximo retorno.");
 
       if (lead) {
         await supabase.from("contact_events").insert({
@@ -482,29 +555,43 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
           started_at: new Date().toISOString(),
         });
 
-        if (lead.realId) {
-          await supabase
-            .from("leads")
-            .update({
-              status: "contacted",
-              temperature: "frio",
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", lead.realId);
-        }
-
         const newContacts = contacts + 1;
         setContacts(newContacts);
         await pushPresence(operatorId, { state: "ocioso", contacts_today: newContacts });
         qc.invalidateQueries({ queryKey: [...LEADS_QUERY_KEY, operatorId] });
       }
 
-      // Automatically advance to the next lead in queue without opening call modal
+      // Open mandatory Step 3 return scheduling modal
+      setStep3ScheduleOpen(true);
+    },
+
+    finishStep3Schedule: async (callbackAtIso: string) => {
+      setStep3ScheduleOpen(false);
+
+      if (lead?.realId) {
+        await supabase
+          .from("leads")
+          .update({
+            status: "contacted",
+            temperature: "morno",
+            callback_at: callbackAtIso,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", lead.realId);
+      }
+
+      toast.success("✅ Retorno agendado com sucesso! Avançando para o próximo lead...");
+      qc.invalidateQueries({ queryKey: [...LEADS_QUERY_KEY, operatorId] });
+
       setTimeout(() => {
         if (fnsRef.current.nextLead) {
           void fnsRef.current.nextLead();
         }
       }, 500);
+    },
+
+    closeStep3Schedule: () => {
+      setStep3ScheduleOpen(false);
     },
 
     // stepIdx = index of the step (0=call_phone, 1=call_whatsapp)
@@ -701,24 +788,16 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
         return;
       }
       setLoadingLead(true);
-      const { data } = await supabase
-        .from("leads")
-        .select("*")
-        .eq("assigned_to", operatorId)
-        .in("status", ["pending", "contacted"])
-        .order("callback_at", { ascending: true, nullsFirst: true })
-        .order("created_at", { ascending: true })
-        .limit(1);
+      const target = await fetchNextPriorityLead(operatorId);
 
-      if (data && data.length > 0) {
-        const target = data[0]!;
+      if (target) {
         setLead({
           id: `lead-${target.id}`,
           realId: target.id,
           name: target.name,
           phone: target.phone ?? "",
           profession: target.profession ?? "Cliente cadastrado",
-          isNew: false,
+          isNew: target.status === "novo" || target.status === "pending",
           status: (target.temperature ?? "morno") as LeadStatus,
           returnTime: "10:00",
           email: target.email,
@@ -733,7 +812,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
           campanha: target.campanha,
         });
       } else {
-        setLead(null); // empty queue — no fake lead
+        setLead(null); // empty queue
       }
       setStepIndex(0);
       setStepDone([false, false, false]);

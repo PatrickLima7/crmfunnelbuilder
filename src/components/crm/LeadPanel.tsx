@@ -5,6 +5,7 @@ import { formatClock, STEPS } from "@/lib/crm-data";
 import { useCrm } from "@/lib/crm-store";
 import { CallScriptModal } from "./CallScriptModal";
 import { BlockingAlertModal } from "./BlockingAlertModal";
+import { Step3SchedulerModal } from "./Step3SchedulerModal";
 
 export function LeadPanel({ operator }: { operator: string }) {
   const crm = useCrm();
@@ -225,6 +226,7 @@ export function LeadPanel({ operator }: { operator: string }) {
         </div>
       )}
       <BlockingAlertModal alert={crm.blockingAlert} />
+      <Step3SchedulerModal />
     </section>
   );
 }
