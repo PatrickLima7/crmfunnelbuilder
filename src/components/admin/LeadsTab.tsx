@@ -1,6 +1,24 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { FileUp, FileDown, Plus, Layers, Search, Trash2, RefreshCw, Eye, Edit, UserCheck } from "lucide-react";
+import {
+  FileUp,
+  FileDown,
+  Plus,
+  Layers,
+  Search,
+  Trash2,
+  RefreshCw,
+  Eye,
+  Edit,
+  UserCheck,
+  Filter,
+  Calendar,
+  Clock,
+  CheckSquare,
+  Square,
+  X,
+  Users,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,12 +33,35 @@ import { LeadImportModal } from "@/components/crm/LeadImportModal";
 
 export function LeadsTab() {
   const qc = useQueryClient();
+
+  // Basic Filter state
   const [search, setSearch] = useState("");
   const [selectedOp, setSelectedOp] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
-  const [openImport, setOpenImport] = useState(false);
+
+  // Advanced Combinable Filter state
+  const [useDateCadastroFilter, setUseDateCadastroFilter] = useState(false);
+  const [dateCadastroStart, setDateCadastroStart] = useState("");
+  const [dateCadastroEnd, setDateCadastroEnd] = useState("");
+
+  const [useDateRetornoFilter, setUseDateRetornoFilter] = useState(false);
+  const [dateRetornoStart, setDateRetornoStart] = useState("");
+  const [dateRetornoEnd, setDateRetornoEnd] = useState("");
+
+  const [selectedCurso, setSelectedCurso] = useState("all");
+  const [selectedMidia, setSelectedMidia] = useState("all");
+  const [onlyUnassignedOrInactiveOp, setOnlyUnassignedOrInactiveOp] = useState(false);
+
+  // Selection & Batch Action state
+  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
+  const [doNotOverwriteAssigned, setDoNotOverwriteAssigned] = useState(false);
+
+  // Inputs for Batch Operations
+  const [batchCallbackDate, setBatchCallbackDate] = useState("");
+  const [batchTargetOp, setBatchTargetOp] = useState("");
 
   // CRUD Modals
+  const [openImport, setOpenImport] = useState(false);
   const [openCreate, setOpenCreate] = useState(false);
   const [viewLead, setViewLead] = useState<any | null>(null);
   const [editLead, setEditLead] = useState<any | null>(null);
@@ -70,22 +111,112 @@ export function LeadsTab() {
 
   const activeOperators = operators.filter((o: any) => o.active !== false);
 
-  // Filtered leads
+  // Extract unique available values for filters
+  const availableCursos = Array.from(new Set(leads.map((l: any) => l.curso).filter(Boolean))).sort();
+  const availableMidias = Array.from(new Set(leads.map((l: any) => l.midia || l.origin).filter(Boolean))).sort();
+
+  // Filtered leads computation (Combinable AND logic)
   const filteredLeads = leads.filter((l: any) => {
-    const matchOp = selectedOp === "all" || l.assigned_to === selectedOp;
-    const matchSearch =
-      !search ||
-      l.name.toLowerCase().includes(search.toLowerCase()) ||
-      (l.phone ?? "").includes(search) ||
-      (l.email ?? "").toLowerCase().includes(search.toLowerCase()) ||
-      (l.curso ?? "").toLowerCase().includes(search.toLowerCase());
-    const matchStatus = selectedStatus === "all" || l.status === selectedStatus;
-    return matchOp && matchSearch && matchStatus;
+    // 1. Text Search
+    if (search) {
+      const s = search.toLowerCase();
+      const matchSearch =
+        (l.name ?? "").toLowerCase().includes(s) ||
+        (l.phone ?? "").includes(s) ||
+        (l.email ?? "").toLowerCase().includes(s) ||
+        (l.curso ?? "").toLowerCase().includes(s) ||
+        (l.midia ?? l.origin ?? "").toLowerCase().includes(s);
+      if (!matchSearch) return false;
+    }
+
+    // 2. Operator Filter
+    if (selectedOp !== "all") {
+      if (selectedOp === "unassigned") {
+        if (l.assigned_to) return false;
+      } else {
+        if (l.assigned_to !== selectedOp) return false;
+      }
+    }
+
+    // 3. Somente contatos sem consultor ou consultor inativo
+    if (onlyUnassignedOrInactiveOp) {
+      const isAssignedActive = activeOperators.some((o) => o.id === l.assigned_to);
+      if (isAssignedActive) return false;
+    }
+
+    // 4. Status Filter
+    if (selectedStatus !== "all") {
+      if (selectedStatus === "novo") {
+        if (l.status !== "novo" && l.status !== "pending") return false;
+      } else {
+        if (l.status !== selectedStatus) return false;
+      }
+    }
+
+    // 5. Curso Filter
+    if (selectedCurso !== "all") {
+      if ((l.curso ?? "") !== selectedCurso) return false;
+    }
+
+    // 6. Midia Filter
+    if (selectedMidia !== "all") {
+      if ((l.midia ?? l.origin ?? "") !== selectedMidia) return false;
+    }
+
+    // 7. Date Cadastro Filter
+    if (useDateCadastroFilter) {
+      const dateVal = l.data_primeiro_cadastro || l.created_at;
+      if (!dateVal) return false;
+      const day = new Date(dateVal).toISOString().slice(0, 10);
+      if (dateCadastroStart && day < dateCadastroStart) return false;
+      if (dateCadastroEnd && day > dateCadastroEnd) return false;
+    }
+
+    // 8. Date Retorno Filter
+    if (useDateRetornoFilter) {
+      if (!l.callback_at) return false;
+      const day = new Date(l.callback_at).toISOString().slice(0, 10);
+      if (dateRetornoStart && day < dateRetornoStart) return false;
+      if (dateRetornoEnd && day > dateRetornoEnd) return false;
+    }
+
+    return true;
   });
+
+  // Selection state helpers
+  const isAllSelected = filteredLeads.length > 0 && filteredLeads.every((l) => selectedLeadIds.includes(l.id));
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedLeadIds([]);
+    } else {
+      setSelectedLeadIds(filteredLeads.map((l) => l.id));
+    }
+  };
+  const toggleSelectOne = (id: string) => {
+    setSelectedLeadIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleClearFilters = () => {
+    setSearch("");
+    setSelectedOp("all");
+    setSelectedStatus("all");
+    setSelectedCurso("all");
+    setSelectedMidia("all");
+    setUseDateCadastroFilter(false);
+    setDateCadastroStart("");
+    setDateCadastroEnd("");
+    setUseDateRetornoFilter(false);
+    setDateRetornoStart("");
+    setDateRetornoEnd("");
+    setOnlyUnassignedOrInactiveOp(false);
+    setSelectedLeadIds([]);
+  };
 
   // Export CSV
   const handleExportCsv = () => {
-    if (leads.length === 0) {
+    if (filteredLeads.length === 0) {
       toast.error("Nenhum lead para exportar.");
       return;
     }
@@ -172,7 +303,7 @@ export function LeadsTab() {
         observacao: form.observacao.trim() || null,
         informacao: form.informacao.trim() || null,
         assigned_to: assignedTo,
-        status: "pending",
+        status: "novo",
         temperature: "morno",
         origin: form.midia || "manual",
       });
@@ -219,34 +350,104 @@ export function LeadsTab() {
     onError: (err: Error) => toast.error(`Erro ao excluir: ${err.message}`),
   });
 
-  // Redistribute pending
-  const redistributeMutation = useMutation({
+  // Batch Operation 1: Alterar em massa Data de Retorno
+  const batchChangeCallbackMutation = useMutation({
     mutationFn: async () => {
-      if (activeOperators.length === 0) throw new Error("Nenhum operador ativo para receber leads.");
-      const { data: pendingLeads, error } = await supabase.from("leads").select("id").eq("status", "pending");
+      if (selectedLeadIds.length === 0) throw new Error("Nenhum lead selecionado.");
+      if (!batchCallbackDate) throw new Error("Selecione a nova data e horário de retorno.");
+      const isoDate = new Date(batchCallbackDate).toISOString();
+      const { error } = await supabase
+        .from("leads")
+        .update({ callback_at: isoDate, updated_at: new Date().toISOString() })
+        .in("id", selectedLeadIds);
       if (error) throw error;
-      if (!pendingLeads || pendingLeads.length === 0) {
-        toast.info("Nenhum lead pendente para redistribuir.");
+      return selectedLeadIds.length;
+    },
+    onSuccess: (count) => {
+      toast.success(`Data de retorno atualizada em ${count} lead(s) com sucesso!`);
+      qc.invalidateQueries({ queryKey: ["admin-leads"] });
+    },
+    onError: (err: Error) => toast.error(`Erro ao alterar data de retorno: ${err.message}`),
+  });
+
+  // Batch Operation 2: Atribuir Consultor Escolhido
+  const batchAssignConsultantMutation = useMutation({
+    mutationFn: async () => {
+      if (selectedLeadIds.length === 0) throw new Error("Nenhum lead selecionado.");
+      if (!batchTargetOp) throw new Error("Selecione o consultor destino.");
+
+      let targetIds = selectedLeadIds;
+      if (doNotOverwriteAssigned) {
+        targetIds = selectedLeadIds.filter((id) => {
+          const lead = leads.find((l) => l.id === id);
+          if (!lead) return false;
+          const isAssignedActive = activeOperators.some((o) => o.id === lead.assigned_to);
+          return !isAssignedActive; // Keep only unassigned or assigned to inactive operators
+        });
+      }
+
+      if (targetIds.length === 0) {
+        toast.info("Nenhum lead alterado. Todos os leads selecionados já possuem consultor ativo e a opção 'Não sobrepor' está marcada.");
         return 0;
       }
+
+      const { error } = await supabase
+        .from("leads")
+        .update({ assigned_to: batchTargetOp, updated_at: new Date().toISOString() })
+        .in("id", targetIds);
+
+      if (error) throw error;
+      return targetIds.length;
+    },
+    onSuccess: (count) => {
+      if (count > 0) {
+        toast.success(`${count} lead(s) atribuídos ao consultor com sucesso!`);
+        qc.invalidateQueries({ queryKey: ["admin-leads"] });
+      }
+    },
+    onError: (err: Error) => toast.error(`Erro ao atribuir consultor: ${err.message}`),
+  });
+
+  // Batch Operation 3: Distribuição Automática e Igualitária entre consultores
+  const batchRedistributeMutation = useMutation({
+    mutationFn: async () => {
+      const targets = selectedLeadIds.length > 0 ? selectedLeadIds : filteredLeads.map((l) => l.id);
+      if (targets.length === 0) throw new Error("Nenhum lead selecionado ou filtrado para redistribuir.");
+      if (activeOperators.length === 0) throw new Error("Nenhum operador ativo para receber leads.");
+
+      let targetIds = targets;
+      if (doNotOverwriteAssigned) {
+        targetIds = targets.filter((id) => {
+          const lead = leads.find((l) => l.id === id);
+          if (!lead) return false;
+          const isAssignedActive = activeOperators.some((o) => o.id === lead.assigned_to);
+          return !isAssignedActive;
+        });
+      }
+
+      if (targetIds.length === 0) {
+        toast.info("Nenhum lead elegível para redistribuição (opção 'Não sobrepor' impediu a alteração de leads com consultor ativo).");
+        return 0;
+      }
+
       let updatedCount = 0;
-      for (let i = 0; i < pendingLeads.length; i++) {
+      for (let i = 0; i < targetIds.length; i++) {
         const assignedTo = activeOperators[i % activeOperators.length]!.id;
         const { error: err } = await supabase
           .from("leads")
           .update({ assigned_to: assignedTo, updated_at: new Date().toISOString() })
-          .eq("id", pendingLeads[i]!.id);
+          .eq("id", targetIds[i]!);
         if (!err) updatedCount++;
       }
       return updatedCount;
     },
     onSuccess: (count) => {
       if (count && count > 0) {
-        toast.success(`${count} leads redistribuídos igualmente entre ${activeOperators.length} vendedor(es) ativo(s)!`);
+        toast.success(`${count} lead(s) redistribuídos igualmente entre ${activeOperators.length} vendedor(es) ativo(s)!`);
         qc.invalidateQueries({ queryKey: ["admin-leads"] });
       }
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error) => toast.error(`Erro ao redistribuir: ${err.message}`),
   });
 
   return (
@@ -255,10 +456,10 @@ export function LeadsTab() {
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-panel p-4">
         <div>
           <h3 className="text-base font-bold flex items-center gap-2">
-            <Layers className="size-4 text-primary" /> Central de Leads (CRUD Completo)
+            <Layers className="size-4 text-primary" /> Central de Gestão & Distribuição Avançada de Leads
           </h3>
           <p className="text-xs text-muted-foreground">
-            Total no banco: <b>{leads.length}</b> leads · <b>{activeOperators.length}</b> vendedor(es) ativo(s)
+            Total no banco: <b>{leads.length}</b> leads · Exibindo <b>{filteredLeads.length}</b> filtrado(s) · <b>{activeOperators.length}</b> vendedor(es) ativo(s)
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -269,17 +470,7 @@ export function LeadsTab() {
             <FileUp className="size-4" /> Importar CSV
           </Button>
           <Button onClick={handleExportCsv} variant="outline" className="gap-1.5">
-            <FileDown className="size-4" /> Exportar CSV
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => redistributeMutation.mutate()}
-            disabled={redistributeMutation.isPending || activeOperators.length === 0}
-            className="gap-1.5 text-xs"
-            title="Redistribuir leads pendentes de forma equilibrada"
-          >
-            <RefreshCw className={`size-3.5 ${redistributeMutation.isPending ? "animate-spin" : ""}`} />
-            Redistribuir
+            <FileDown className="size-4" /> Exportar CSV ({filteredLeads.length})
           </Button>
         </div>
       </div>
@@ -317,183 +508,484 @@ export function LeadsTab() {
         })}
       </div>
 
-      {/* Filters and Lead list */}
+      {/* ── Painel de Filtros Combináveis Avançados ── */}
       <div className="rounded-xl border border-border bg-panel p-4 space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-            <div className="relative flex-1">
+        <div className="flex items-center justify-between border-b border-border pb-2">
+          <h4 className="text-xs font-bold uppercase tracking-wide text-primary flex items-center gap-1.5">
+            <Filter className="size-3.5" /> Filtros Combináveis do Funil de Vendas
+          </h4>
+          <Button variant="ghost" size="sm" onClick={handleClearFilters} className="h-6 text-[10px] text-muted-foreground hover:text-foreground">
+            <X className="size-3 mr-1" /> Limpar Filtros
+          </Button>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+          {/* Busca Geral */}
+          <div className="space-y-1 col-span-1 sm:col-span-2">
+            <Label className="text-[11px] font-bold text-muted-foreground">Busca Textual</Label>
+            <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar por nome, telefone, e-mail ou curso…"
+                placeholder="Nome, telefone, e-mail, curso ou mídia…"
                 className="h-8 pl-8 text-xs"
               />
             </div>
+          </div>
+
+          {/* Consultor */}
+          <div className="space-y-1">
+            <Label className="text-[11px] font-bold text-muted-foreground">Nome do Consultor</Label>
             <Select value={selectedOp} onValueChange={setSelectedOp}>
-              <SelectTrigger className="h-8 w-44 text-xs">
-                <SelectValue placeholder="Filtrar por vendedor" />
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Todos os consultores" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos os vendedores</SelectItem>
+                <SelectItem value="all">Todos os consultores</SelectItem>
+                <SelectItem value="unassigned">Sem consultor atribuído</SelectItem>
                 {operators.map((op) => (
                   <SelectItem key={op.id} value={op.id}>{op.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Status */}
+          <div className="space-y-1">
+            <Label className="text-[11px] font-bold text-muted-foreground">Status do Lead</Label>
             <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-              <SelectTrigger className="h-8 w-36 text-xs">
-                <SelectValue placeholder="Filtrar por status" />
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Todos os status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os status</SelectItem>
-                <SelectItem value="pending">Pendente</SelectItem>
+                <SelectItem value="novo">🆕 Novo Lead</SelectItem>
                 <SelectItem value="contacted">Contatado</SelectItem>
-                <SelectItem value="converted">Convertido</SelectItem>
-                <SelectItem value="inactive">Inativo</SelectItem>
-                <SelectItem value="em_nutricao">Em Nutrição</SelectItem>
+                <SelectItem value="converted">🎯 Convertido</SelectItem>
+                <SelectItem value="em_nutricao">🌱 Em Nutrição</SelectItem>
                 <SelectItem value="blacklisted">🚫 Blacklist (Sem Interesse)</SelectItem>
+                <SelectItem value="inactive">Inativo</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          <p className="text-xs text-muted-foreground">
-            Exibindo <b>{filteredLeads.length}</b> de <b>{leads.length}</b>
-          </p>
+          {/* Curso de Interesse */}
+          <div className="space-y-1">
+            <Label className="text-[11px] font-bold text-muted-foreground">Curso de Interesse</Label>
+            <Select value={selectedCurso} onValueChange={setSelectedCurso}>
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Todos os cursos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos os cursos</SelectItem>
+                {availableCursos.map((c: any) => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Mídia / Origem */}
+          <div className="space-y-1">
+            <Label className="text-[11px] font-bold text-muted-foreground">Mídia / Origem</Label>
+            <Select value={selectedMidia} onValueChange={setSelectedMidia}>
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Todas as mídias" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as mídias</SelectItem>
+                {availableMidias.map((m: any) => (
+                  <SelectItem key={m} value={m}>{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Filtro Dt. Cadastro */}
+          <div className="space-y-1 col-span-1 sm:col-span-2 rounded-lg border border-border/60 bg-muted/20 p-2">
+            <div className="flex items-center gap-2 mb-1">
+              <input
+                type="checkbox"
+                id="chkDtCadastro"
+                checked={useDateCadastroFilter}
+                onChange={(e) => setUseDateCadastroFilter(e.target.checked)}
+                className="rounded border-border accent-primary cursor-pointer"
+              />
+              <label htmlFor="chkDtCadastro" className="text-[11px] font-bold cursor-pointer select-none">
+                Filtrar Por Dt. Cadastro
+              </label>
+            </div>
+            {useDateCadastroFilter && (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <span className="text-[10px] text-muted-foreground block">Data Inicial</span>
+                  <Input
+                    type="date"
+                    value={dateCadastroStart}
+                    onChange={(e) => setDateCadastroStart(e.target.value)}
+                    className="h-7 text-xs"
+                  />
+                </div>
+                <div>
+                  <span className="text-[10px] text-muted-foreground block">Data Final</span>
+                  <Input
+                    type="date"
+                    value={dateCadastroEnd}
+                    onChange={(e) => setDateCadastroEnd(e.target.value)}
+                    className="h-7 text-xs"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Filtro Dt. Retorno */}
+          <div className="space-y-1 col-span-1 sm:col-span-2 rounded-lg border border-border/60 bg-muted/20 p-2">
+            <div className="flex items-center gap-2 mb-1">
+              <input
+                type="checkbox"
+                id="chkDtRetorno"
+                checked={useDateRetornoFilter}
+                onChange={(e) => setUseDateRetornoFilter(e.target.checked)}
+                className="rounded border-border accent-primary cursor-pointer"
+              />
+              <label htmlFor="chkDtRetorno" className="text-[11px] font-bold cursor-pointer select-none">
+                Filtrar Por Dt. Retorno
+              </label>
+            </div>
+            {useDateRetornoFilter && (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <span className="text-[10px] text-muted-foreground block">Data Inicial</span>
+                  <Input
+                    type="date"
+                    value={dateRetornoStart}
+                    onChange={(e) => setDateRetornoStart(e.target.value)}
+                    className="h-7 text-xs"
+                  />
+                </div>
+                <div>
+                  <span className="text-[10px] text-muted-foreground block">Data Final</span>
+                  <Input
+                    type="date"
+                    value={dateRetornoEnd}
+                    onChange={(e) => setDateRetornoEnd(e.target.value)}
+                    className="h-7 text-xs"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Lead Table */}
+        {/* Checkbox: Somente contatos sem consultor ou consultor inativo */}
+        <div className="pt-1 flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="chkUnassignedOnly"
+            checked={onlyUnassignedOrInactiveOp}
+            onChange={(e) => setOnlyUnassignedOrInactiveOp(e.target.checked)}
+            className="rounded border-border accent-primary cursor-pointer"
+          />
+          <label htmlFor="chkUnassignedOnly" className="text-xs font-semibold text-foreground cursor-pointer select-none">
+            Somente mostrar contatos sem consultor ou consultor inativo
+          </label>
+        </div>
+      </div>
+
+      {/* ── Painel de Seleção e Ações em Lote (Batch Operations) ── */}
+      <div className="rounded-xl border border-primary/40 bg-primary/5 p-3 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-primary/20 pb-2">
+          <div className="flex items-center gap-2">
+            <Badge variant="default" className="bg-primary text-primary-foreground font-mono">
+              {selectedLeadIds.length} selecionado(s)
+            </Badge>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs gap-1"
+              onClick={toggleSelectAll}
+            >
+              {isAllSelected ? <CheckSquare className="size-3.5 text-primary" /> : <Square className="size-3.5" />}
+              {isAllSelected ? "Desmarcar Todos os Filtrados" : "Marcar Todos os Filtrados"}
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="chkDoNotOverwrite"
+              checked={doNotOverwriteAssigned}
+              onChange={(e) => setDoNotOverwriteAssigned(e.target.checked)}
+              className="rounded border-border accent-primary cursor-pointer"
+            />
+            <label htmlFor="chkDoNotOverwrite" className="text-xs font-bold text-foreground cursor-pointer select-none">
+              Não Sobrepor consultores já vinculados
+            </label>
+          </div>
+        </div>
+
+        {/* Linha de Ações em Lote */}
+        <div className="grid gap-3 md:grid-cols-3">
+          {/* Ação 1: Alterar Data de Retorno em Massa */}
+          <div className="space-y-1.5 rounded-lg border border-border bg-panel p-2.5">
+            <Label className="text-[11px] font-bold text-muted-foreground flex items-center gap-1">
+              <Calendar className="size-3 text-primary" /> Nova Data de Retorno
+            </Label>
+            <Input
+              type="datetime-local"
+              value={batchCallbackDate}
+              onChange={(e) => setBatchCallbackDate(e.target.value)}
+              className="h-8 text-xs"
+            />
+            <Button
+              size="sm"
+              variant="secondary"
+              className="w-full h-7 text-xs gap-1"
+              disabled={selectedLeadIds.length === 0 || !batchCallbackDate || batchChangeCallbackMutation.isPending}
+              onClick={() => batchChangeCallbackMutation.mutate()}
+            >
+              <Clock className="size-3" /> Alterar Data de Retorno
+            </Button>
+          </div>
+
+          {/* Ação 2: Atribuir Consultor Escolhido */}
+          <div className="space-y-1.5 rounded-lg border border-border bg-panel p-2.5">
+            <Label className="text-[11px] font-bold text-muted-foreground flex items-center gap-1">
+              <UserCheck className="size-3 text-primary" /> Novo Consultor
+            </Label>
+            <Select value={batchTargetOp} onValueChange={setBatchTargetOp}>
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Selecione um consultor" />
+              </SelectTrigger>
+              <SelectContent>
+                {operators.map((op) => (
+                  <SelectItem key={op.id} value={op.id}>{op.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="w-full h-7 text-xs gap-1"
+              disabled={selectedLeadIds.length === 0 || !batchTargetOp || batchAssignConsultantMutation.isPending}
+              onClick={() => batchAssignConsultantMutation.mutate()}
+            >
+              <UserCheck className="size-3" /> Atribuir aos Selecionados
+            </Button>
+          </div>
+
+          {/* Ação 3: Distribuição Automática e Igualitária */}
+          <div className="space-y-1.5 rounded-lg border border-border bg-panel p-2.5 flex flex-col justify-between">
+            <div>
+              <Label className="text-[11px] font-bold text-muted-foreground flex items-center gap-1">
+                <Users className="size-3 text-primary" /> Distribuição Automática
+              </Label>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                Divide os leads selecionados (ou filtrados) igualmente entre os {activeOperators.length} consultor(es) ativo(s).
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="default"
+              className="w-full h-7 text-xs gap-1 bg-primary text-primary-foreground hover:bg-primary/90 mt-1"
+              disabled={batchRedistributeMutation.isPending || activeOperators.length === 0}
+              onClick={() => batchRedistributeMutation.mutate()}
+            >
+              <RefreshCw className={`size-3 ${batchRedistributeMutation.isPending ? "animate-spin" : ""}`} />
+              Distribuir Automaticamente
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Tabela de Leads ── */}
+      <div className="rounded-xl border border-border bg-panel p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            Resultados do Funil ({filteredLeads.length} leads)
+          </h4>
+          <span className="text-xs text-muted-foreground font-mono">
+            {selectedLeadIds.length} marcado(s) de {filteredLeads.length}
+          </span>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="border-b border-border bg-muted/40 uppercase text-[10px] text-muted-foreground font-bold">
               <tr>
-                <th className="px-3 py-2">Nome</th>
-                <th className="px-3 py-2">Telefone 1</th>
-                <th className="px-3 py-2">Curso</th>
-                <th className="px-3 py-2">Mídia</th>
+                <th className="px-3 py-2 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    checked={isAllSelected}
+                    onChange={toggleSelectAll}
+                    className="rounded border-border accent-primary cursor-pointer"
+                    title="Selecionar / Desselecionar todos"
+                  />
+                </th>
+                <th className="px-3 py-2">Nome do Prospecto</th>
+                <th className="px-3 py-2">Telefone</th>
+                <th className="px-3 py-2">Curso / Mídia</th>
+                <th className="px-3 py-2">Dt. Hr. Cadastro</th>
+                <th className="px-3 py-2">Dt. Retorno</th>
                 <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Consultor</th>
+                <th className="px-3 py-2">Nome do Consultor</th>
                 <th className="px-3 py-2 text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {loadingLeads && (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-muted-foreground">
+                  <td colSpan={9} className="py-8 text-center text-muted-foreground">
                     Carregando leads…
                   </td>
                 </tr>
               )}
               {!loadingLeads && filteredLeads.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-muted-foreground">
-                    Nenhum lead encontrado.
+                  <td colSpan={9} className="py-8 text-center text-muted-foreground">
+                    Nenhum lead encontrado com os filtros aplicados.
                   </td>
                 </tr>
               )}
-              {filteredLeads.map((l: any) => (
-                <tr key={l.id} className="hover:bg-muted/30">
-                  <td className="px-3 py-2.5 font-semibold">
-                    {l.name}
-                    {l.email && <p className="text-[10px] text-muted-foreground font-normal">{l.email}</p>}
-                  </td>
-                  <td className="px-3 py-2.5 font-mono text-[11px]">{l.phone ?? "—"}</td>
-                  <td className="px-3 py-2 text-[11px]">{l.curso ?? "—"}</td>
-                  <td className="px-3 py-2 text-[11px]">{l.midia ?? l.origin ?? "—"}</td>
-                  <td className="px-3 py-2.5 font-semibold">
-                    <span className={`rounded px-1.5 py-0.5 text-[10px] ${
-                      l.status === "converted" ? "bg-success/15 text-success" :
-                      l.status === "contacted" ? "bg-info/15 text-info" :
-                      l.status === "em_nutricao" ? "bg-purple-500/15 text-purple-500" :
-                      l.status === "blacklisted" ? "bg-destructive/15 text-destructive font-bold" :
-                      "bg-muted text-muted-foreground"
-                    }`}>
-                      {l.status === "blacklisted" ? "🚫 Blacklist" : l.status === "em_nutricao" ? "Em Nutrição" : l.status}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-[11px]">
-                    {l.assigned_profile?.name ?? "Não atribuído"}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      {l.status === "blacklisted" && (
+              {filteredLeads.map((l: any) => {
+                const isSelected = selectedLeadIds.includes(l.id);
+                const dtCadastroFormatted = l.data_primeiro_cadastro || l.created_at
+                  ? new Date(l.data_primeiro_cadastro || l.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })
+                  : "—";
+                const dtRetornoFormatted = l.callback_at
+                  ? new Date(l.callback_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })
+                  : "—";
+
+                return (
+                  <tr key={l.id} className={`hover:bg-muted/30 transition-colors ${isSelected ? "bg-primary/5 font-medium" : ""}`}>
+                    <td className="px-3 py-2.5 text-center">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelectOne(l.id)}
+                        className="rounded border-border accent-primary cursor-pointer"
+                      />
+                    </td>
+                    <td className="px-3 py-2.5 font-semibold">
+                      {l.name}
+                      {l.email && <p className="text-[10px] text-muted-foreground font-normal">{l.email}</p>}
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-[11px]">{l.phone ?? "—"}</td>
+                    <td className="px-3 py-2 text-[11px]">
+                      <div>{l.curso || "—"}</div>
+                      <div className="text-[10px] text-muted-foreground">{l.midia || l.origin || "—"}</div>
+                    </td>
+                    <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">{dtCadastroFormatted}</td>
+                    <td className="px-3 py-2 font-mono text-[11px]">
+                      {l.callback_at ? (
+                        <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                          l.status === "converted" ? "bg-success/15 text-success" : "bg-warning/15 text-warning-foreground"
+                        }`}>
+                          <Clock className="size-2.5" /> {dtRetornoFormatted}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 font-semibold">
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] ${
+                        l.status === "converted" ? "bg-success/15 text-success" :
+                        l.status === "contacted" ? "bg-info/15 text-info" :
+                        l.status === "em_nutricao" ? "bg-purple-500/15 text-purple-500" :
+                        l.status === "blacklisted" ? "bg-destructive/15 text-destructive font-bold" :
+                        "bg-muted text-muted-foreground"
+                      }`}>
+                        {l.status === "blacklisted" ? "🚫 Blacklist" : l.status === "em_nutricao" ? "Em Nutrição" : l.status}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-[11px]">
+                      {l.assigned_profile?.name ?? (
+                        <span className="text-warning italic font-normal">Não atribuído</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {l.status === "blacklisted" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-[10px] text-success border-success/40 bg-success/10 hover:bg-success/20"
+                            title="Reativar lead e voltar para a fila pendente"
+                            onClick={async () => {
+                              await supabase.from("leads").update({ status: "novo" }).eq("id", l.id);
+                              qc.invalidateQueries({ queryKey: ["admin-leads"] });
+                              toast.success(`Lead "${l.name}" reativado para status Novo Lead!`);
+                            }}
+                          >
+                            <RefreshCw className="size-3 mr-1" /> Reativar
+                          </Button>
+                        )}
                         <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-[10px] text-success border-success/40 bg-success/10 hover:bg-success/20"
-                          title="Reativar lead e voltar para a fila pendente"
-                          onClick={async () => {
-                            await supabase.from("leads").update({ status: "pending" }).eq("id", l.id);
-                            qc.invalidateQueries({ queryKey: ["admin-leads"] });
-                            toast.success(`Lead "${l.name}" reativado para status Pendente!`);
+                          size="icon"
+                          variant="ghost"
+                          className="size-7"
+                          title="Ver detalhes"
+                          onClick={() => setViewLead(l)}
+                        >
+                          <Eye className="size-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-7"
+                          title="Editar lead"
+                          onClick={() => {
+                            setEditLead(l);
+                            setForm({
+                              name: l.name ?? "",
+                              phone: l.phone ?? "",
+                              phone2: l.phone2 ?? "",
+                              telefone_3: l.telefone_3 ?? "",
+                              telefone_4: l.telefone_4 ?? "",
+                              email: l.email ?? "",
+                              curso: l.curso ?? "",
+                              midia: l.midia ?? "",
+                              campanha: l.campanha ?? "",
+                              hr_para_contato: l.hr_para_contato ?? "",
+                              observacao: l.observacao ?? "",
+                              informacao: l.informacao ?? "",
+                              assigned_to: l.assigned_to ?? "",
+                            });
                           }}
                         >
-                          <RefreshCw className="size-3 mr-1" /> Reativar
+                          <Edit className="size-3.5" />
                         </Button>
-                      )}
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-7"
-                        title="Ver detalhes"
-                        onClick={() => setViewLead(l)}
-                      >
-                        <Eye className="size-3.5" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-7"
-                        title="Editar lead"
-                        onClick={() => {
-                          setEditLead(l);
-                          setForm({
-                            name: l.name ?? "",
-                            phone: l.phone ?? "",
-                            phone2: l.phone2 ?? "",
-                            telefone_3: l.telefone_3 ?? "",
-                            telefone_4: l.telefone_4 ?? "",
-                            email: l.email ?? "",
-                            curso: l.curso ?? "",
-                            midia: l.midia ?? "",
-                            campanha: l.campanha ?? "",
-                            hr_para_contato: l.hr_para_contato ?? "",
-                            observacao: l.observacao ?? "",
-                            informacao: l.informacao ?? "",
-                            assigned_to: l.assigned_to ?? "",
-                          });
-                        }}
-                      >
-                        <Edit className="size-3.5" />
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button size="icon" variant="ghost" className="size-7 text-destructive hover:text-destructive">
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Excluir lead?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              "{l.name}" será excluído permanentemente do banco de dados.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction
-                              className="bg-destructive text-destructive-foreground"
-                              onClick={() => deleteMutation.mutate(l.id)}
-                            >
-                              Excluir
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button size="icon" variant="ghost" className="size-7 text-destructive hover:text-destructive">
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Excluir lead?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                "{l.name}" será excluído permanentemente do banco de dados.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction
+                                className="bg-destructive text-destructive-foreground"
+                                onClick={() => deleteMutation.mutate(l.id)}
+                              >
+                                Excluir
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -675,9 +1167,10 @@ export function LeadsTab() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-bold">Status</Label>
-                <Select value={editLead.status || "pending"} onValueChange={(val) => setEditLead({ ...editLead, status: val })}>
+                <Select value={editLead.status || "novo"} onValueChange={(val) => setEditLead({ ...editLead, status: val })}>
                   <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="novo">Novo Lead</SelectItem>
                     <SelectItem value="pending">Pendente</SelectItem>
                     <SelectItem value="contacted">Contatado</SelectItem>
                     <SelectItem value="converted">Convertido</SelectItem>

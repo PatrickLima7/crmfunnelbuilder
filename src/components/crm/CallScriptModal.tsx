@@ -67,8 +67,8 @@ export function CallScriptModal() {
     setRetornoError(null);
   };
 
-  // Outcomes that require a scheduling date/time (all except convertido and sem_interesse)
-  const needsScheduling = outcome !== null && outcome !== "convertido" && outcome !== "sem_interesse";
+  // Outcomes that require or allow scheduling date/time (all except sem_interesse)
+  const needsScheduling = outcome !== null && outcome !== "sem_interesse";
 
   const validateAndFinish = async () => {
     if (!outcome) return;
@@ -87,7 +87,6 @@ export function CallScriptModal() {
 
     let selectedCallbackIso: string | undefined = undefined;
 
-    // All outcomes except convertido and sem_interesse need optional/required scheduling
     if (needsScheduling) {
       if (callbackIso) {
         selectedCallbackIso = callbackIso;
@@ -313,7 +312,11 @@ export function CallScriptModal() {
               {needsScheduling && (
                 <div className="space-y-2 rounded-xl border border-primary/30 bg-primary/5 p-3">
                   <DateTimePicker
-                    label={`Definir data e hora do retorno ${outcome === "retorno" ? "(obrigatório)" : "(opcional)"}`}
+                    label={
+                      outcome === "convertido"
+                        ? "Definir data e hora do retorno de pós-venda (opcional)"
+                        : `Definir data e hora do retorno ${outcome === "retorno" ? "(obrigatório)" : "(opcional)"}`
+                    }
                     value={callbackIso}
                     onChange={(iso) => {
                       setCallbackIso(iso);

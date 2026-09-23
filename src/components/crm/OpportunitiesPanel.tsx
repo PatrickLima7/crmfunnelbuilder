@@ -504,11 +504,18 @@ function LeadCard({ lead, isSelected, onSelect, onUpdate, operatorId }: {
       {/* Callback badge */}
       {lead.callback_at && (
         <div className={`mt-2 flex items-center justify-between rounded-md border px-2 py-1 ${
-          isCallbackDue ? "border-warning/50 bg-warning/15 animate-pulse" : "border-border bg-muted/40"
+          lead.status === "converted"
+            ? "border-success/50 bg-success/15"
+            : isCallbackDue ? "border-warning/50 bg-warning/15 animate-pulse" : "border-border bg-muted/40"
         }`}>
-          <span className={`flex items-center gap-1 font-semibold ${isCallbackDue ? "text-warning-foreground" : "text-muted-foreground"}`}>
+          <span className={`flex items-center gap-1 font-semibold ${
+            lead.status === "converted" ? "text-success font-bold" : isCallbackDue ? "text-warning-foreground" : "text-muted-foreground"
+          }`}>
             <Clock className="size-3" />
-            {isCallbackDue ? "⚠️ Retornar HOJE:" : "Retorno:"} {callbackFormatted}
+            {lead.status === "converted"
+              ? `🎯 Pós-Venda: ${callbackFormatted}`
+              : `${isCallbackDue ? "⚠️ Retornar HOJE:" : "Retorno:"} ${callbackFormatted}`
+            }
           </span>
           <button onClick={() => onUpdate({ callback_at: null })} className="text-[10px] underline hover:text-foreground">
             remover
