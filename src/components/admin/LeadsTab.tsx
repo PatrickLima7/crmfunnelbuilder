@@ -288,6 +288,7 @@ export function LeadsTab() {
       if (!assignedTo && activeOperators.length > 0) {
         assignedTo = activeOperators[Math.floor(Math.random() * activeOperators.length)]!.id;
       }
+      const now = new Date().toISOString();
       const { error } = await supabase.from("leads").insert({
         name: form.name.trim(),
         phone: form.phone.trim() || null,
@@ -303,15 +304,19 @@ export function LeadsTab() {
         observacao: form.observacao.trim() || null,
         informacao: form.informacao.trim() || null,
         assigned_to: assignedTo,
-        status: "novo",
+        status: "novo" as any,
         temperature: "morno",
         origin: form.midia || "manual",
+        data_primeiro_cadastro: now,
+        data_ultimo_cadastro: now,
+        historico: [{ ts: now, acao: "cadastro_manual", detalhes: `Lead cadastrado via painel administrativo` }] as any,
       });
       if (error) throw error;
     },
     onSuccess: () => {
       toast.success("Lead cadastrado com sucesso!");
       qc.invalidateQueries({ queryKey: ["admin-leads"] });
+      qc.invalidateQueries({ queryKey: ["leads"] });
       setOpenCreate(false);
       setForm({ name: "", phone: "", phone2: "", telefone_3: "", telefone_4: "", email: "", curso: "", midia: "", campanha: "", hr_para_contato: "", observacao: "", informacao: "", assigned_to: "" });
     },
@@ -443,7 +448,7 @@ export function LeadsTab() {
     },
     onSuccess: (count) => {
       if (count && count > 0) {
-        toast.success(`${count} lead(s) redistribuídos igualmente entre ${activeOperators.length} vendedor(es) ativo(s)!`);
+        toast.success(`${count} lead(s) redistribuídos igualmente entre ${activeOperators.length} consultor(es) ativo(s)!`);
         qc.invalidateQueries({ queryKey: ["admin-leads"] });
       }
     },
@@ -459,7 +464,7 @@ export function LeadsTab() {
             <Layers className="size-4 text-primary" /> Central de Gestão & Distribuição Avançada de Leads
           </h3>
           <p className="text-xs text-muted-foreground">
-            Total no banco: <b>{leads.length}</b> leads · Exibindo <b>{filteredLeads.length}</b> filtrado(s) · <b>{activeOperators.length}</b> vendedor(es) ativo(s)
+            Total no banco: <b>{leads.length}</b> leads · Exibindo <b>{filteredLeads.length}</b> filtrado(s) · <b>{activeOperators.length}</b> consultor(es) ativo(s)
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -1193,7 +1198,7 @@ export function LeadsTab() {
               <div className="col-span-2 space-y-1">
                 <Label className="text-xs font-bold">Consultor Atribuído</Label>
                 <Select value={editLead.assigned_to || ""} onValueChange={(val) => setEditLead({ ...editLead, assigned_to: val })}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="Selecione um vendedor" /></SelectTrigger>
+                  <SelectTrigger className="h-9"><SelectValue placeholder="Selecione um consultor" /></SelectTrigger>
                   <SelectContent>
                     {operators.map((op) => (
                       <SelectItem key={op.id} value={op.id}>{op.name}</SelectItem>

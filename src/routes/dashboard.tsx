@@ -4,15 +4,15 @@ import { Topbar } from "@/components/crm/Topbar";
 import { MetricsSidebar } from "@/components/crm/MetricsSidebar";
 import { LeadPanel } from "@/components/crm/LeadPanel";
 import { OpportunitiesPanel } from "@/components/crm/OpportunitiesPanel";
-import { CrmProvider } from "@/lib/crm-store";
+import { CrmProvider, useCrm } from "@/lib/crm-store";
 import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/dashboard")({
   head: () => ({
     meta: [
-      { title: "Painel do operador — Funil de Vendas CRM" },
+      { title: "Painel do consultor — Funil de Vendas CRM" },
       { name: "description", content: "Gerencie leads, etapas de contato, metas diárias e ritmo de conversão em tempo real no CRM Funil de Vendas." },
-      { property: "og:title", content: "Painel do operador — Funil de Vendas CRM" },
+      { property: "og:title", content: "Painel do consultor — Funil de Vendas CRM" },
       { property: "og:description", content: "Meta do dia, protocolo de contato e fila de oportunidades em uma única tela." },
     ],
   }),
@@ -43,7 +43,6 @@ function Dashboard() {
         return;
       }
 
-      // Admins can also access the dashboard, redirect them to admin if they come here by accident
       setOperator(profile.name);
       setOperatorId(profile.id);
       setChecking(false);
@@ -81,14 +80,43 @@ function Dashboard() {
 
   return (
     <CrmProvider operatorId={operatorId}>
-      <div className="flex h-screen flex-col overflow-hidden">
-        <Topbar operator={operator} operatorId={operatorId} />
-        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-[260px_minmax(0,1fr)_300px] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
+      <DashboardContent operator={operator} operatorId={operatorId} />
+    </CrmProvider>
+  );
+}
+
+function DashboardContent({ operator, operatorId }: { operator: string; operatorId: string }) {
+  const crm = useCrm();
+  const isShiftActive = crm.shiftActive;
+
+  return (
+    <div className="flex h-screen flex-col overflow-hidden">
+      <Topbar operator={operator} operatorId={operatorId} />
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        {/* Main 3-column operational layout with grayscale / opacity block when shift is NOT started */}
+        <div
+          className={`grid h-full min-h-0 w-full grid-cols-1 overflow-y-auto transition-all duration-300 lg:grid-cols-[260px_minmax(0,1fr)_300px] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden ${
+            !isShiftActive ? "grayscale opacity-40 pointer-events-none select-none filter cursor-not-allowed" : ""
+          }`}
+        >
           <MetricsSidebar />
           <LeadPanel operator={operator} />
           <OpportunitiesPanel operatorId={operatorId} />
         </div>
+
+        {/* Overlay banner prompting consultant to start shift if not started */}
+        {!isShiftActive && (
+          <div className="pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center px-4">
+            <div className="flex items-center gap-2.5 rounded-full border border-warning/40 bg-background/95 px-5 py-2 text-xs font-bold text-warning shadow-xl backdrop-blur">
+              <span className="relative flex size-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-warning opacity-75" />
+                <span className="relative inline-flex size-2.5 rounded-full bg-warning" />
+              </span>
+              <span>Expediente não iniciado — Clique em "Iniciar Expediente" no topo verde para liberar o atendimento</span>
+            </div>
+          </div>
+        )}
       </div>
-    </CrmProvider>
+    </div>
   );
 }

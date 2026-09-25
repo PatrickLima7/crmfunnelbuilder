@@ -199,7 +199,7 @@ export function LeadImportModal({ open, onClose, operatorId, autoDistribute = fa
         if (opErr) throw opErr;
 
         if (!activeOps || activeOps.length === 0) {
-          toast.error("Nenhum vendedor ativo encontrado para receber os leads.");
+          toast.error("Nenhum consultor ativo encontrado para receber os leads.");
           setLoadingImport(false);
           return;
         }
@@ -219,7 +219,7 @@ export function LeadImportModal({ open, onClose, operatorId, autoDistribute = fa
             company: l.company || null,
             temperature: (l.temperature ?? "frio") as "quente" | "morno" | "frio",
             origin: l.origin ?? "csv",
-            status: "pending" as const,
+            status: "novo" as const,
             assigned_to: assignedOp.id,
             notes: l.notes || null,
             callback_at: l.callback_at || null,
@@ -249,7 +249,7 @@ export function LeadImportModal({ open, onClose, operatorId, autoDistribute = fa
           }
         }
 
-        const summary = `${totalInserted} leads distribuídos igualmente entre ${activeOps.length} vendedor(es) ativo(s) (${Math.floor(totalInserted / activeOps.length)} cada).`;
+        const summary = `${totalInserted} leads distribuídos igualmente entre ${activeOps.length} consultor(es) ativo(s) (${Math.floor(totalInserted / activeOps.length)} cada).`;
         setResult({ totalInserted, errors, distributionSummary: summary });
         toast.success(summary);
       } else {
@@ -281,7 +281,7 @@ export function LeadImportModal({ open, onClose, operatorId, autoDistribute = fa
               Importe sua base de contatos a partir de um arquivo <strong>.csv</strong>.{" "}
               {autoDistribute && (
                 <span className="font-semibold text-primary">
-                  Os leads serão distribuídos automaticamente de forma igualitária (Round-Robin) entre todos os vendedores ativos.
+                  Os leads serão distribuídos automaticamente de forma igualitária (Round-Robin) entre todos os consultores ativos.
                 </span>
               )}
             </p>
@@ -403,7 +403,7 @@ export function LeadImportModal({ open, onClose, operatorId, autoDistribute = fa
 
             {autoDistribute && (
               <div className="rounded-lg bg-primary/10 border border-primary/30 p-2.5 text-xs text-primary font-medium">
-                🔄 <b>Distribuição Automática Ativa:</b> Os {mappedRows().length} leads serão atribuídos em modo Round-Robin sequencial aos vendedores com status Ativo.
+                🔄 <b>Distribuição Automática Ativa:</b> Os {mappedRows().length} leads serão atribuídos em modo Round-Robin sequencial aos consultores com status Ativo.
               </div>
             )}
 

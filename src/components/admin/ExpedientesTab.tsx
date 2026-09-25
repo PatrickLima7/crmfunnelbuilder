@@ -26,7 +26,7 @@ export function ExpedientesTab() {
   const exportCsv = () => {
     if (filteredLogs.length === 0) return;
 
-    const headers = ["Vendedor", "E-mail", "Data", "Hora Início", "Hora Fim", "Duração (HH:MM:SS)", "Contatos", "Conversões", "Pausas (seg)"];
+    const headers = ["Consultor", "E-mail", "Data", "Hora Início", "Hora Fim", "Duração (HH:MM:SS)", "Contatos", "Conversões", "Pausas (seg)"];
     const rows = filteredLogs.map((l) => [
       `"${(l.operator as any)?.name ?? "N/A"}"`,
       `"${(l.operator as any)?.email ?? "N/A"}"`,
@@ -54,7 +54,7 @@ export function ExpedientesTab() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-bold flex items-center gap-2">
-            <Clock className="size-5 text-primary" /> Logs de Expedientes dos Vendedores
+            <Clock className="size-5 text-primary" /> Logs de Expedientes dos Consultores
           </h2>
           <p className="text-xs text-muted-foreground">
             Auditoria completa de todos os turnos de trabalho, horários de início/fim, ligações e conversões por expediente.
@@ -90,7 +90,7 @@ export function ExpedientesTab() {
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
-          placeholder="Buscar por vendedor ou data (ex: 10/09)..."
+          placeholder="Buscar por consultor ou data (ex: 10/09)..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pl-9 h-9 text-xs"
@@ -113,7 +113,7 @@ export function ExpedientesTab() {
             <table className="w-full text-xs text-left">
               <thead className="bg-muted border-b border-border text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-2.5 font-semibold">Vendedor</th>
+                  <th className="px-4 py-2.5 font-semibold">Consultor</th>
                   <th className="px-4 py-2.5 font-semibold">Data</th>
                   <th className="px-4 py-2.5 font-semibold">Início</th>
                   <th className="px-4 py-2.5 font-semibold">Fim</th>
@@ -125,7 +125,7 @@ export function ExpedientesTab() {
               </thead>
               <tbody className="divide-y divide-border/50">
                 {filteredLogs.map((log) => {
-                  const opName = (log.operator as any)?.name ?? "Vendedor desativado";
+                  const opName = (log.operator as any)?.name ?? "Consultor desativado";
                   const opEmail = (log.operator as any)?.email ?? "";
                   const startDate = new Date(log.started_at);
                   const isFinished = !!log.ended_at;

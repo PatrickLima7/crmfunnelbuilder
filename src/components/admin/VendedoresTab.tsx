@@ -29,39 +29,49 @@ function useCreateOperator() {
   return useMutation({
     mutationFn: async ({ email, name, goal }: { email: string; name: string; goal: number }) => {
       const tempPassword = `CRM@${Math.random().toString(36).slice(2, 10)}`;
-      const { data, error } = await supabase.auth.admin?.createUser({
-        email,
-        password: tempPassword,
-        email_confirm: true,
-        user_metadata: { name, role: "operator" },
-      }) ?? { data: null, error: new Error("Admin API indisponível no cliente.") };
+      let userId: string | null = null;
 
-      if (error && !data) {
-        const { data: inserted, error: insertErr } = await supabase.from("profiles").insert({
+      try {
+        const { data: authData, error: authErr } = await supabase.auth.signUp({
+          email,
+          password: tempPassword,
+          options: {
+            data: { name, role: "operator" },
+          },
+        });
+        if (!authErr && authData?.user) {
+          userId = authData.user.id;
+        }
+      } catch {
+        // client-side auth fallback
+      }
+
+      if (!userId) {
+        userId = crypto.randomUUID();
+      }
+
+      const { data: profile, error: profileErr } = await supabase
+        .from("profiles")
+        .upsert({
+          id: userId,
           name,
           role: "operator",
           active: true,
           daily_contacts_goal: goal,
-        }).select().single();
-        if (insertErr) throw insertErr;
-        return { data: inserted, tempPassword };
-      }
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
 
-      if (data?.user) {
-        await supabase.from("profiles").update({
-          daily_contacts_goal: goal,
-          active: true,
-        }).eq("id", data.user.id);
-      }
-
-      return { data, tempPassword };
+      if (profileErr) throw profileErr;
+      return { data: profile, tempPassword };
     },
     onSuccess: ({ tempPassword }) => {
-      toast.success(`Operador criado! Senha temporária: ${tempPassword}`);
+      toast.success(`Consultor criado com sucesso! Senha temporária: ${tempPassword}`);
       qc.invalidateQueries({ queryKey: ["profiles"] });
     },
     onError: (err: Error) => {
-      toast.error(`Erro ao criar operador: ${err.message}`);
+      toast.error(`Erro ao criar consultor: ${err.message}`);
     },
   });
 }
@@ -78,7 +88,7 @@ function useUpdateProfile() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Vendedor atualizado.");
+      toast.success("Consultor atualizado.");
       qc.invalidateQueries({ queryKey: ["profiles"] });
     },
     onError: (err: Error) => {
@@ -129,7 +139,7 @@ function useDeleteProfile() {
       return redistributed;
     },
     onSuccess: (redistributed) => {
-      toast.success(`Operador excluído. ${redistributed} lead(s) redistribuído(s).`);
+      toast.success(`Consultor excluído. ${redistributed} lead(s) redistribuído(s).`);
       qc.invalidateQueries({ queryKey: ["profiles"] });
       qc.invalidateQueries({ queryKey: ["leads"] });
     },
@@ -176,20 +186,20 @@ export function VendedoresTab() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-bold">Gestão de Vendedores e Metas Individuais</h3>
+          <h3 className="text-sm font-bold">Gestão de Consultores e Metas Individuais</h3>
           <p className="text-xs text-muted-foreground">
-            {operators.length} operador(es) ({operators.filter((o) => o.active !== false).length} ativos) · {admins.length} admin(s)
+            {operators.length} consultores ({operators.filter((o) => o.active !== false).length} ativos) · {admins.length} admin(s)
           </p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button size="sm">
-              <Plus /> Novo operador
+              <Plus /> Novo consultor
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Criar novo operador</DialogTitle>
+              <DialogTitle>Criar novo consultor</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleCreate} className="space-y-4 pt-2">
               <div className="space-y-1.5">
@@ -225,7 +235,7 @@ export function VendedoresTab() {
               </p>
               <div className="flex gap-2">
                 <Button type="submit" disabled={createOp.isPending} className="flex-1">
-                  {createOp.isPending ? "Criando..." : "Criar operador"}
+                  {createOp.isPending ? "Criando..." : "Criar consultor"}
                 </Button>
                 <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
                   Cancelar
@@ -240,12 +250,12 @@ export function VendedoresTab() {
       <div className="rounded-xl border border-border bg-panel">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-border px-4 py-2.5 gap-2">
           <div className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-            Vendedores / Operadores
+            Consultores / Operadores
           </div>
           <div className="relative w-full sm:w-64">
             <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
             <Input
-              placeholder="Buscar operador..."
+              placeholder="Buscar consultor..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-8 h-8 text-xs"
@@ -254,7 +264,7 @@ export function VendedoresTab() {
         </div>
         <div className="divide-y divide-border">
           {filteredOperators.length === 0 && (
-            <p className="px-4 py-4 text-sm text-muted-foreground">Nenhum operador encontrado.</p>
+            <p className="px-4 py-4 text-sm text-muted-foreground">Nenhum consultor encontrado.</p>
           )}
           {filteredOperators.map((op) => (
             <ProfileRow
@@ -344,7 +354,7 @@ function ProfileRow({
           {profile.role === "admin" ? (
             <><Shield className="size-3 text-primary" /> Admin</>
           ) : (
-            <><User className="size-3" /> Operador</>
+            <><User className="size-3" /> Consultor</>
           )}
           · criado em {new Date(profile.created_at).toLocaleDateString("pt-BR")}
           {leadCount !== undefined && ` · ${leadCount} lead(s)`}
@@ -399,7 +409,7 @@ function ProfileRow({
         )}
         {onMakeOperator && (
           <Button size="sm" variant="secondary" onClick={onMakeOperator} className="h-7 text-xs gap-1">
-            <UserX className="size-3" /> Tornar operador
+            <UserX className="size-3" /> Tornar consultor
           </Button>
         )}
         {onDelete && (
@@ -411,10 +421,10 @@ function ProfileRow({
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Excluir operador?</AlertDialogTitle>
+                <AlertDialogTitle>Excluir consultor?</AlertDialogTitle>
                 <AlertDialogDescription>
                   Tem certeza que deseja excluir "{profile.name}"?
-                  {leadCount !== undefined && leadCount > 0 && ` Os ${leadCount} lead(s) atuais serão redistribuídos entre os operadores ativos.`}
+                  {leadCount !== undefined && leadCount > 0 && ` Os ${leadCount} lead(s) atuais serão redistribuídos entre os consultores ativos.`}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

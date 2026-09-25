@@ -220,7 +220,7 @@ function AdminPage() {
             <TabsTrigger value="metas">Metas</TabsTrigger>
             <TabsTrigger value="script">Script</TabsTrigger>
             <TabsTrigger value="vendedores">
-              <Users className="size-3.5" /> Vendedores
+              <Users className="size-3.5" /> Consultores
             </TabsTrigger>
             <TabsTrigger value="midias">
               <Megaphone className="size-3.5" /> Mídias
