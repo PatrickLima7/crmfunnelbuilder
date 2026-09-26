@@ -413,13 +413,33 @@ export function LeadsTab() {
     onError: (err: Error) => toast.error(`Erro ao atribuir consultor: ${err.message}`),
   });
 
-  // Batch Operation 3: Distribuição Automática e Igualitária entre consultores
+  // Batch Operation 3: Distribuição Automática e Igualitária em alta performance (RPC + Bulk fallback)
   const batchRedistributeMutation = useMutation({
     mutationFn: async () => {
       const targets = selectedLeadIds.length > 0 ? selectedLeadIds : filteredLeads.map((l) => l.id);
       if (targets.length === 0) throw new Error("Nenhum lead selecionado ou filtrado para redistribuir.");
       if (activeOperators.length === 0) throw new Error("Nenhum operador ativo para receber leads.");
 
+      const startTime = performance.now();
+
+      // Attempt High-Performance Database RPC call first (1 single atomic query)
+      try {
+        const { data: rpcRes, error: rpcErr } = await supabase.rpc("distribute_leads_batch" as any, {
+          p_lead_ids: targets,
+          p_do_not_overwrite: doNotOverwriteAssigned,
+        });
+
+        if (!rpcErr && rpcRes && Array.isArray(rpcRes) && rpcRes.length > 0) {
+          const totalUpdated = rpcRes[0].total_updated ?? 0;
+          const duration = Math.round(performance.now() - startTime);
+          console.log(`[Distribuição RPC] ${totalUpdated} leads atualizados em ${duration}ms via PostgreSQL RPC.`);
+          return { count: totalUpdated, duration, method: "RPC" };
+        }
+      } catch (e) {
+        console.warn("[Distribuição RPC] Fallback para agrupamento em lote cliente-side", e);
+      }
+
+      // Fallback: Group lead IDs by operator and execute parallel bulk UPDATEs (.in("id", chunk))
       let targetIds = targets;
       if (doNotOverwriteAssigned) {
         targetIds = targets.filter((id) => {
@@ -432,23 +452,39 @@ export function LeadsTab() {
 
       if (targetIds.length === 0) {
         toast.info("Nenhum lead elegível para redistribuição (opção 'Não sobrepor' impediu a alteração de leads com consultor ativo).");
-        return 0;
+        return { count: 0, duration: 0, method: "Fallback" };
       }
 
-      let updatedCount = 0;
+      // Bucket lead IDs by operator index
+      const buckets: Record<string, string[]> = {};
       for (let i = 0; i < targetIds.length; i++) {
-        const assignedTo = activeOperators[i % activeOperators.length]!.id;
-        const { error: err } = await supabase
-          .from("leads")
-          .update({ assigned_to: assignedTo, updated_at: new Date().toISOString() })
-          .eq("id", targetIds[i]!);
-        if (!err) updatedCount++;
+        const opId = activeOperators[i % activeOperators.length]!.id;
+        if (!buckets[opId]) buckets[opId] = [];
+        buckets[opId].push(targetIds[i]!);
       }
-      return updatedCount;
+
+      const now = new Date().toISOString();
+      const updatePromises = Object.entries(buckets).map(async ([opId, leadIds]) => {
+        const { error } = await supabase
+          .from("leads")
+          .update({ assigned_to: opId, updated_at: now })
+          .in("id", leadIds);
+        if (error) throw error;
+        return leadIds.length;
+      });
+
+      const results = await Promise.all(updatePromises);
+      const totalUpdated = results.reduce((acc, c) => acc + c, 0);
+      const duration = Math.round(performance.now() - startTime);
+      console.log(`[Distribuição Lote] ${totalUpdated} leads atualizados em ${duration}ms via bulk updates paralelos.`);
+
+      return { count: totalUpdated, duration, method: "Lote" };
     },
-    onSuccess: (count) => {
-      if (count && count > 0) {
-        toast.success(`${count} lead(s) redistribuídos igualmente entre ${activeOperators.length} consultor(es) ativo(s)!`);
+    onSuccess: (res) => {
+      if (res.count > 0) {
+        toast.success(
+          `${res.count} lead(s) redistribuídos igualmente entre ${activeOperators.length} consultor(es) ativo(s) em ${res.duration}ms!`
+        );
         qc.invalidateQueries({ queryKey: ["admin-leads"] });
       }
     },
