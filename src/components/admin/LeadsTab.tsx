@@ -765,7 +765,7 @@ export function LeadsTab() {
                 <SelectValue placeholder="Selecione um consultor" />
               </SelectTrigger>
               <SelectContent>
-                {operators.map((op) => (
+                {activeOperators.map((op) => (
                   <SelectItem key={op.id} value={op.id}>{op.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -1050,7 +1050,7 @@ export function LeadsTab() {
                   <SelectValue placeholder="Automático (Round-Robin)" />
                 </SelectTrigger>
                 <SelectContent>
-                  {operators.map((op) => (
+                  {activeOperators.map((op) => (
                     <SelectItem key={op.id} value={op.id}>{op.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -1200,7 +1200,7 @@ export function LeadsTab() {
                 <Select value={editLead.assigned_to || ""} onValueChange={(val) => setEditLead({ ...editLead, assigned_to: val })}>
                   <SelectTrigger className="h-9"><SelectValue placeholder="Selecione um consultor" /></SelectTrigger>
                   <SelectContent>
-                    {operators.map((op) => (
+                    {activeOperators.map((op) => (
                       <SelectItem key={op.id} value={op.id}>{op.name}</SelectItem>
                     ))}
                   </SelectContent>

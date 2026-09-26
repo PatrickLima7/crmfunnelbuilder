@@ -118,33 +118,28 @@ function useDeleteProfile() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (profileId: string) => {
-      const { data: activeOps } = await supabase.from("profiles").select("id").eq("role", "operator").eq("active", true).neq("id", profileId);
-      
-      const { data: operatorLeads } = await supabase
+      // Unassign leads previously assigned to this profile (assigned_to = null)
+      const { error: leadsErr } = await supabase
         .from("leads")
-        .select("id")
+        .update({ assigned_to: null, updated_at: new Date().toISOString() })
         .eq("assigned_to", profileId);
+        
+      if (leadsErr) throw leadsErr;
 
-      let redistributed = 0;
-      if (operatorLeads && operatorLeads.length > 0 && activeOps && activeOps.length > 0) {
-        for (let i = 0; i < operatorLeads.length; i++) {
-          const newOwner = activeOps[i % activeOps.length]!.id;
-          await supabase.from("leads").update({ assigned_to: newOwner, updated_at: new Date().toISOString() }).eq("id", operatorLeads[i]!.id);
-          redistributed++;
-        }
-      }
+      // Clean presence record if exists
+      await supabase.from("operator_presence").delete().eq("operator_id", profileId);
 
       const { error } = await supabase.from("profiles").delete().eq("id", profileId);
       if (error) throw error;
-      return redistributed;
     },
-    onSuccess: (redistributed) => {
-      toast.success(`Consultor excluído. ${redistributed} lead(s) redistribuído(s).`);
+    onSuccess: () => {
+      toast.success("Consultor excluído. Os leads que pertenciam a ele agora estão sem consultor.");
       qc.invalidateQueries({ queryKey: ["profiles"] });
       qc.invalidateQueries({ queryKey: ["leads"] });
+      qc.invalidateQueries({ queryKey: ["admin-leads"] });
     },
     onError: (err: Error) => {
-      toast.error(`Erro ao excluir: ${err.message}`);
+      toast.error(`Erro ao excluir consultor: ${err.message}`);
     },
   });
 }
@@ -424,7 +419,7 @@ function ProfileRow({
                 <AlertDialogTitle>Excluir consultor?</AlertDialogTitle>
                 <AlertDialogDescription>
                   Tem certeza que deseja excluir "{profile.name}"?
-                  {leadCount !== undefined && leadCount > 0 && ` Os ${leadCount} lead(s) atuais serão redistribuídos entre os consultores ativos.`}
+                  {leadCount !== undefined && leadCount > 0 && ` Os ${leadCount} lead(s) atuais deste consultor ficarão sem consultor atribuído.`}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
