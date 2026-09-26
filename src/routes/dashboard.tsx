@@ -34,11 +34,12 @@ function Dashboard() {
       }
       const { data: profile } = await supabase
         .from("profiles")
-        .select("id, name, role")
+        .select("id, name, role, active")
         .eq("id", session.user.id)
         .single();
 
-      if (!profile) {
+      if (!profile || !profile.active) {
+        await supabase.auth.signOut();
         navigate({ to: "/", replace: true });
         return;
       }

@@ -129,8 +129,8 @@ function AdminPage() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) { navigate({ to: "/" }); return; }
-      supabase.from("profiles").select("name, role").eq("id", user.id).single().then(({ data }) => {
-        if (!data || data.role !== "admin") {
+      supabase.from("profiles").select("name, role, active").eq("id", user.id).single().then(({ data }) => {
+        if (!data || !data.active || data.role !== "admin") {
           toast.error("Acesso restrito a administradores.");
           navigate({ to: "/dashboard" });
         } else {

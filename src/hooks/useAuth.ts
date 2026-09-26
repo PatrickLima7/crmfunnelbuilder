@@ -78,14 +78,3 @@ export async function signIn(email: string, password: string) {
 export async function signOut() {
   await supabase.auth.signOut();
 }
-
-/**
- * Invite a new operator (admin only — uses service role via edge function or admin API)
- */
-export async function inviteOperator(email: string, name: string) {
-  // Creates user with a magic link invite via Supabase Admin Auth
-  const { data, error } = await supabase.auth.admin?.inviteUserByEmail(email, {
-    data: { name, role: "operator" },
-  }) ?? { data: null, error: new Error("Admin API not available on client") };
-  return { data, error };
-}

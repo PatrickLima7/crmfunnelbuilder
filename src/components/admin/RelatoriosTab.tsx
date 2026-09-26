@@ -1,3 +1,4 @@
+import { csvCell } from "@/lib/csv";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
@@ -83,8 +84,8 @@ function exportCsv(rows: Record<string, unknown>[], filename: string) {
   if (!rows.length) return;
   const cols = Object.keys(rows[0]!);
   const lines = [
-    cols.join(";"),
-    ...rows.map((r) => cols.map((c) => String(r[c] ?? "")).join(";")),
+    cols.map(csvCell).join(";"),
+    ...rows.map((r) => cols.map((c) => csvCell(r[c])).join(";")),
   ];
   const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);

@@ -33,6 +33,7 @@ async function fetchNextPriorityLead(operatorId: string) {
     .from("leads")
     .select("*")
     .eq("assigned_to", operatorId)
+    .or(`callback_at.is.null,callback_at.lte.${new Date().toISOString()}`)
     .in("status", ["novo", "pending"])
     .order("created_at", { ascending: true })
     .limit(1);
@@ -44,6 +45,7 @@ async function fetchNextPriorityLead(operatorId: string) {
     .from("leads")
     .select("*")
     .eq("assigned_to", operatorId)
+    .or(`callback_at.is.null,callback_at.lte.${new Date().toISOString()}`)
     .not("callback_at", "is", null)
     .in("status", ["contacted", "novo", "pending"])
     .order("callback_at", { ascending: true })
@@ -56,6 +58,7 @@ async function fetchNextPriorityLead(operatorId: string) {
     .from("leads")
     .select("*")
     .eq("assigned_to", operatorId)
+    .or(`callback_at.is.null,callback_at.lte.${new Date().toISOString()}`)
     .eq("temperature", "quente")
     .in("status", ["contacted", "pending"])
     .order("updated_at", { ascending: true })
@@ -68,6 +71,7 @@ async function fetchNextPriorityLead(operatorId: string) {
     .from("leads")
     .select("*")
     .eq("assigned_to", operatorId)
+    .or(`callback_at.is.null,callback_at.lte.${new Date().toISOString()}`)
     .eq("temperature", "morno")
     .in("status", ["contacted", "pending"])
     .order("updated_at", { ascending: true })
@@ -80,6 +84,7 @@ async function fetchNextPriorityLead(operatorId: string) {
     .from("leads")
     .select("*")
     .eq("assigned_to", operatorId)
+    .or(`callback_at.is.null,callback_at.lte.${new Date().toISOString()}`)
     .eq("temperature", "frio")
     .in("status", ["contacted", "pending"])
     .order("updated_at", { ascending: true })
@@ -92,6 +97,7 @@ async function fetchNextPriorityLead(operatorId: string) {
     .from("leads")
     .select("*")
     .eq("assigned_to", operatorId)
+    .or(`callback_at.is.null,callback_at.lte.${new Date().toISOString()}`)
     .eq("status", "em_nutricao")
     .order("updated_at", { ascending: true })
     .limit(1);
@@ -354,7 +360,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString();
   
       const [opp, ret, hot, conv] = await Promise.all([
-        supabase.from("leads").select("id", { count: "exact", head: true }).eq("assigned_to", operatorId).eq("status", "pending"),
+        supabase.from("leads").select("id", { count: "exact", head: true }).eq("assigned_to", operatorId).in("status", ["novo", "pending"]),
         supabase.from("leads").select("id", { count: "exact", head: true }).eq("assigned_to", operatorId).not("callback_at", "is", null).lte("callback_at", todayEnd),
         supabase.from("leads").select("id", { count: "exact", head: true }).eq("assigned_to", operatorId).eq("temperature", "quente"),
         supabase.from("leads").select("id", { count: "exact", head: true }).eq("assigned_to", operatorId).eq("status", "converted").gte("updated_at", monthStart),
@@ -632,10 +638,10 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
 
       // Toast feedback
       if (outcome === "convertido") {
-        setConversions((c) => { newConversions = c + 1; return c + 1; });
+        newConversions = conversions + 1;
+        setConversions(newConversions);
         toast.success("🎉 Cliente convertido! Registro de conversão criado.");
       } else if (outcome === "interessado") {
-        setConversions((c) => { newConversions = c + 1; return c + 1; });
         toast.success("🎯 Lead interessado! Marcado como Quente e agendado.");
       } else if (outcome === "pensar") {
         toast.info("Lead indeciso — marcado como Morno e agendado.");
@@ -663,18 +669,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
           })
           .eq("id", lead.realId);
 
-        // For convertido: insert conversion record (silently ignore if table missing)
-        if (outcome === "convertido") {
-          try {
-            await supabase.from("conversions" as any).insert({
-              lead_id: lead.realId,
-              operator_id: operatorId,
-              converted_at: ended,
-            });
-          } catch {
-            // conversions table may not exist yet — silently ignore
-          }
-        }
+
       }
 
       await supabase.from("contact_events").insert({

@@ -1,3 +1,4 @@
+import { csvCell } from "@/lib/csv";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -246,30 +247,30 @@ export function LeadsTab() {
     ];
 
     const rows = filteredLeads.map((l: any) => [
-      `"${l.name || ""}"`,
-      `"${l.phone || ""}"`,
-      `"${l.phone2 || ""}"`,
-      `"${l.telefone_3 || ""}"`,
-      `"${l.telefone_4 || ""}"`,
-      `"${l.email || ""}"`,
-      `"${l.curso || ""}"`,
-      `"${l.midia || l.origin || ""}"`,
-      `"${l.campanha || ""}"`,
-      `"${l.hr_para_contato || ""}"`,
-      `"${l.dt_matricula || ""}"`,
-      `"${(l.informacao || "").replace(/"/g, '""')}"`,
-      `"${(l.notes || l.observacao || "").replace(/"/g, '""')}"`,
-      `"${(l.detalhes || "").replace(/"/g, '""')}"`,
-      `"${l.status || ""}"`,
-      `"${l.temperature || ""}"`,
-      `"${l.assigned_profile?.name || "Não atribuído"}"`,
-      `"${l.data_primeiro_cadastro || l.created_at || ""}"`,
-      `"${l.data_ultimo_cadastro || ""}"`,
-      `"${l.data_ultimo_contato || ""}"`,
-      `"${l.callback_at || ""}"`,
+      csvCell(l.name || ""),
+      csvCell(l.phone || ""),
+      csvCell(l.phone2 || ""),
+      csvCell(l.telefone_3 || ""),
+      csvCell(l.telefone_4 || ""),
+      csvCell(l.email || ""),
+      csvCell(l.curso || ""),
+      csvCell(l.midia || l.origin || ""),
+      csvCell(l.campanha || ""),
+      csvCell(l.hr_para_contato || ""),
+      csvCell(l.dt_matricula || ""),
+      csvCell((l.informacao || "")),
+      csvCell((l.notes || l.observacao || "")),
+      csvCell((l.detalhes || "")),
+      csvCell(l.status || ""),
+      csvCell(l.temperature || ""),
+      csvCell(l.assigned_profile?.name || "Não atribuído"),
+      csvCell(l.data_primeiro_cadastro || l.created_at || ""),
+      csvCell(l.data_ultimo_cadastro || ""),
+      csvCell(l.data_ultimo_contato || ""),
+      csvCell(l.callback_at || ""),
     ]);
 
-    const csvContent = "\uFEFF" + [headers.join(";"), ...rows.map((r) => r.join(";"))].join("\n");
+    const csvContent = "\uFEFF" + [headers.map(csvCell).join(";"), ...rows.map((r) => r.join(";"))].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");

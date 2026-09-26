@@ -1,6 +1,8 @@
 -- Migration 017: High-Performance Automatic Lead Distribution RPC Function & Indexes
 -- Execute no Supabase Dashboard > SQL Editor
 
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS active boolean NOT NULL DEFAULT true;
+
 -- 1. Create Indexes for High-Performance Queries
 CREATE INDEX IF NOT EXISTS idx_leads_assigned_to ON public.leads (assigned_to);
 CREATE INDEX IF NOT EXISTS idx_leads_status ON public.leads (status);

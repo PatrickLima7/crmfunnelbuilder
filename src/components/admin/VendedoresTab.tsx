@@ -28,43 +28,13 @@ function useCreateOperator() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ email, name, goal }: { email: string; name: string; goal: number }) => {
-      const tempPassword = `CRM@${Math.random().toString(36).slice(2, 10)}`;
-      let userId: string | null = null;
+      const { data, error } = await supabase.functions.invoke("create-operator", {
+        body: { email, name, goal },
+      });
+      if (error) throw new Error("Não foi possível criar o consultor. Verifique a função create-operator no Supabase.");
+      if (!data?.tempPassword) throw new Error(data?.error ?? "Resposta inválida do servidor.");
+      return data as { tempPassword: string };
 
-      try {
-        const { data: authData, error: authErr } = await supabase.auth.signUp({
-          email,
-          password: tempPassword,
-          options: {
-            data: { name, role: "operator" },
-          },
-        });
-        if (!authErr && authData?.user) {
-          userId = authData.user.id;
-        }
-      } catch {
-        // client-side auth fallback
-      }
-
-      if (!userId) {
-        userId = crypto.randomUUID();
-      }
-
-      const { data: profile, error: profileErr } = await supabase
-        .from("profiles")
-        .upsert({
-          id: userId,
-          name,
-          role: "operator",
-          active: true,
-          daily_contacts_goal: goal,
-          updated_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      if (profileErr) throw profileErr;
-      return { data: profile, tempPassword };
     },
     onSuccess: ({ tempPassword }) => {
       toast.success(`Consultor criado com sucesso! Senha temporária: ${tempPassword}`);

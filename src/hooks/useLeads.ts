@@ -234,7 +234,9 @@ export function useUpdateLead(operatorId: string) {
           updated_at: new Date().toISOString(),
         })
         .eq("id", id)
-        .eq("assigned_to", operatorId);
+        .eq("assigned_to", operatorId)
+        .select("id")
+        .single();
       if (error) throw error;
     },
     onSuccess: () => {
@@ -252,7 +254,9 @@ export function useDeleteLead(operatorId: string) {
         .from("leads")
         .delete()
         .eq("id", id)
-        .eq("assigned_to", operatorId);
+        .eq("assigned_to", operatorId)
+        .select("id")
+        .single();
       if (error) throw error;
     },
     onSuccess: () => {
@@ -347,7 +351,7 @@ export function useSeedSampleLeads(operatorId: string) {
         profession: s.profession ?? null,
         company: s.company ?? null,
         temperature: s.temperature ?? "morno",
-        origin: "teste_ficticio",
+        origin: "manual",
         status: "novo" as const,
         assigned_to: operatorId,
         notes: s.notes ?? null,

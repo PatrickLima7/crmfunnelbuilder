@@ -34,10 +34,16 @@ function LoginPage() {
       if (session?.user) {
         const { data: profile } = await supabase
           .from("profiles")
-          .select("role")
+          .select("role, active")
           .eq("id", session.user.id)
           .single();
-        if (profile?.role === "admin") {
+        if (!profile || !profile.active) {
+          await supabase.auth.signOut();
+          setError("Conta inativa ou sem perfil. Entre em contato com o administrador.");
+          setCheckingSession(false);
+          return;
+        }
+        if (profile.role === "admin") {
           navigate({ to: "/admin" });
         } else {
           navigate({ to: "/dashboard" });
@@ -75,11 +81,16 @@ function LoginPage() {
       // Fetch profile to determine redirect
       const { data: profile } = await supabase
         .from("profiles")
-        .select("role")
+        .select("role, active")
         .eq("id", data.user.id)
         .single();
 
-      if (profile?.role === "admin") {
+      if (!profile || !profile.active) {
+        await supabase.auth.signOut();
+        setLoading(false);
+        return setError("Conta inativa ou sem perfil. Entre em contato com o administrador.");
+      }
+      if (profile.role === "admin") {
         navigate({ to: "/admin" });
       } else {
         navigate({ to: "/dashboard" });
