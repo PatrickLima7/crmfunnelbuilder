@@ -11,7 +11,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
-    "test:security": "node tests/security.mjs && node tests/create-operator.mjs"
+    "test:security": "node tests/security.mjs && node tests/create-operator.mjs",
+    "test:leads": "node tests/lead-categories.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

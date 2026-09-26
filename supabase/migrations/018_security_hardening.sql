@@ -45,6 +45,7 @@ DROP POLICY IF EXISTS "operator read assigned leads" ON public.leads;
 CREATE POLICY "operator read assigned leads" ON public.leads FOR SELECT TO authenticated
   USING (auth.uid() = assigned_to);
 DROP POLICY IF EXISTS "auth read expediente_logs" ON public.expediente_logs;
+DROP POLICY IF EXISTS "operator read own expediente_logs" ON public.expediente_logs;
 CREATE POLICY "operator read own expediente_logs" ON public.expediente_logs FOR SELECT TO authenticated
   USING (auth.uid() = operator_id OR public.is_admin());
 

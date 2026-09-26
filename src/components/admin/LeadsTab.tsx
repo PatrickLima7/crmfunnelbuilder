@@ -148,7 +148,7 @@ export function LeadsTab() {
     // 4. Status Filter
     if (selectedStatus !== "all") {
       if (selectedStatus === "novo") {
-        if (l.status !== "novo" && l.status !== "pending") return false;
+        if (l.status !== "novo") return false;
       } else {
         if (l.status !== selectedStatus) return false;
       }
@@ -290,28 +290,37 @@ export function LeadsTab() {
         assignedTo = activeOperators[Math.floor(Math.random() * activeOperators.length)]!.id;
       }
       const now = new Date().toISOString();
-      const { error } = await supabase.from("leads").insert({
+      const phone = form.phone.trim();
+      const { data: existing, error: lookupError } = phone
+        ? await supabase.from("leads").select("*").eq("phone", phone).maybeSingle()
+        : { data: null, error: null };
+      if (lookupError) throw lookupError;
+      const payload = {
         name: form.name.trim(),
         phone: form.phone.trim() || null,
-        phone2: form.phone2.trim() || null,
-        telefone_3: form.telefone_3.trim() || null,
-        telefone_4: form.telefone_4.trim() || null,
-        email: form.email.trim() || null,
-        curso: form.curso.trim() || null,
-        midia: form.midia.trim() || null,
-        campanha: form.campanha.trim() || null,
-        hr_para_contato: form.hr_para_contato.trim() || null,
-        notes: form.observacao.trim() || null,
-        observacao: form.observacao.trim() || null,
-        informacao: form.informacao.trim() || null,
-        assigned_to: assignedTo,
+        phone2: form.phone2.trim() || existing?.phone2 || null,
+        telefone_3: form.telefone_3.trim() || existing?.telefone_3 || null,
+        telefone_4: form.telefone_4.trim() || existing?.telefone_4 || null,
+        email: form.email.trim() || existing?.email || null,
+        curso: form.curso.trim() || existing?.curso || null,
+        midia: form.midia.trim() || existing?.midia || null,
+        campanha: form.campanha.trim() || existing?.campanha || null,
+        hr_para_contato: form.hr_para_contato.trim() || existing?.hr_para_contato || null,
+        notes: form.observacao.trim() || existing?.notes || null,
+        observacao: form.observacao.trim() || existing?.observacao || null,
+        informacao: form.informacao.trim() || existing?.informacao || null,
+        assigned_to: form.assigned_to || existing?.assigned_to || assignedTo,
         status: "novo" as any,
-        temperature: "morno",
-        origin: form.midia || "manual",
-        data_primeiro_cadastro: now,
+        temperature: "morno" as const,
+        callback_at: null,
+        origin: "manual",
+        data_primeiro_cadastro: existing?.data_primeiro_cadastro ?? now,
         data_ultimo_cadastro: now,
-        historico: [{ ts: now, acao: "cadastro_manual", detalhes: `Lead cadastrado via painel administrativo` }] as any,
-      });
+        historico: [...(Array.isArray(existing?.historico) ? existing.historico : []), { ts: now, acao: existing ? "recadastro" : "cadastro_manual", detalhes: "Cadastro manual via painel administrativo" }],
+      };
+      const { error } = existing
+        ? await supabase.from("leads").update(payload).eq("id", existing.id).select("id").single()
+        : await supabase.from("leads").insert(payload);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -956,9 +965,10 @@ export function LeadsTab() {
                             className="h-7 text-[10px] text-success border-success/40 bg-success/10 hover:bg-success/20"
                             title="Reativar lead e voltar para a fila pendente"
                             onClick={async () => {
-                              await supabase.from("leads").update({ status: "novo" }).eq("id", l.id);
+                              const { error } = await supabase.from("leads").update({ status: "pending", callback_at: null }).eq("id", l.id);
+                              if (error) { toast.error(error.message); return; }
                               qc.invalidateQueries({ queryKey: ["admin-leads"] });
-                              toast.success(`Lead "${l.name}" reativado para status Novo Lead!`);
+                              toast.success(`Lead "${l.name}" reativado para a carteira!`);
                             }}
                           >
                             <RefreshCw className="size-3 mr-1" /> Reativar

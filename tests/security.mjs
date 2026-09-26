@@ -74,5 +74,32 @@ await db.query('update public.profiles set active = false where id = $1', [ids.a
 await asUser(ids.admin, async () => {
   await assert.rejects(db.query("select * from public.distribute_leads_batch('{}')"), /administradores/);
 });
+// Existing CSV rows from the old UI must be repaired without changing opt-in imports.
+await db.exec(`insert into public.leads(name, origin, status, historico) values
+  ('legacy-csv', 'csv', 'novo', '[{"acao":"importacao_csv","detalhes":"Importado via CSV"}]'),
+  ('explicit-csv', 'csv', 'novo', '[{"acao":"importacao_csv","detalhes":"Importado via CSV como novo lead"}]'),
+  ('reregistered-csv', 'csv', 'novo', '[{"acao":"importacao_csv","detalhes":"Importado via CSV"},{"acao":"recadastro"}]'),
+  ('plain-csv', 'csv', 'pending', '[]'),
+  ('campaign-intake', 'instagram', 'pending', '[]'),
+  ('manual-intake', 'manual', 'pending', '[]'),
+  ('closed-import', 'csv', 'converted', '[{"acao":"importacao_csv","detalhes":"Importado via CSV"}]');`);
+for (const file of ['018_security_hardening.sql', '019_lead_priority.sql', '019_lead_priority.sql']) {
+  await db.exec(await readFile(new URL(`../supabase/migrations/${file}`, import.meta.url), 'utf8'));
+}
+const statuses = Object.fromEntries((await db.query("select name, status from public.leads")).rows.map((row) => [row.name, row.status]));
+assert.equal(statuses['legacy-csv'], 'pending');
+assert.equal(statuses['plain-csv'], 'pending');
+assert.equal(statuses['explicit-csv'], 'novo');
+assert.equal(statuses['reregistered-csv'], 'novo');
+assert.equal(statuses['campaign-intake'], 'novo');
+assert.equal(statuses['manual-intake'], 'novo');
+assert.equal(statuses['closed-import'], 'converted');
+if (process.argv[2]) {
+  const bundle = await readFile(process.argv[2], 'utf8');
+  await db.exec(bundle);
+  await db.exec(bundle);
+  console.log('PASS: delivered SQL bundle runs twice on an existing database.');
+}
 await db.close();
+console.log('PASS: repeatable migrations, legacy CSV repair, explicit CSV opt-in, campaign/manual intake and preserved re-registration.');
 console.log('PASS: all migrations; signup privilege escalation; anonymous access; operator isolation; profile recreation; admin distribution; inactive accounts.');

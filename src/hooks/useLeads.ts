@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { importedLeadStatus } from "@/lib/lead-categories";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import type { Lead } from "@/lib/supabase-types";
@@ -7,6 +9,7 @@ export const LEADS_QUERY_KEY = ["leads"];
 
 export type LeadInput = {
   name: string;
+  is_new?: boolean;
   phone?: string;
   phone2?: string;
   cpf?: string;
@@ -30,18 +33,32 @@ export type LeadInput = {
 
 /** Fetch all leads assigned to this operator */
 export function useLeads(operatorId: string) {
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (!operatorId) return;
+    const channel = supabase.channel(`leads-${operatorId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "leads", filter: `assigned_to=eq.${operatorId}` }, () => {
+        void qc.invalidateQueries({ queryKey: [...LEADS_QUERY_KEY, operatorId] });
+      }).subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [operatorId, qc]);
   return useQuery({
     queryKey: [...LEADS_QUERY_KEY, operatorId],
     queryFn: async (): Promise<Lead[]> => {
-      const { data, error } = await supabase
-        .from("leads")
-        .select("*")
-        .eq("assigned_to", operatorId)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data ?? [];
+      const all: Lead[] = [];
+      const pageSize = 500;
+      for (let offset = 0; ; offset += pageSize) {
+        const { data, error } = await supabase.from("leads").select("*")
+          .eq("assigned_to", operatorId).order("created_at", { ascending: false }).order("id")
+          .range(offset, offset + pageSize - 1);
+        if (error) throw error;
+        all.push(...(data ?? []));
+        if (!data || data.length < pageSize) break;
+      }
+      return all;
     },
     enabled: !!operatorId,
+    refetchInterval: 15000,
   });
 }
 
@@ -55,11 +72,12 @@ export function useCreateLead(operatorId: string) {
 
       // Check if lead already exists by phone for re-registration
       if (phoneClean) {
-        const { data: existing } = await supabase
+        const { data: existing, error: lookupError } = await supabase
           .from("leads")
           .select("*")
           .eq("phone", phoneClean)
           .maybeSingle();
+        if (lookupError) throw lookupError;
 
         if (existing) {
           const currentHistory = (existing.historico as Array<{ ts: string; acao: string; detalhes?: string }>) ?? [];
@@ -74,6 +92,7 @@ export function useCreateLead(operatorId: string) {
             .update({
               status: "novo" as any,
               temperature: lead.temperature ?? existing.temperature,
+              callback_at: lead.callback_at || null,
               data_ultimo_cadastro: now,
               historico: [...currentHistory, newEntry],
               assigned_to: operatorId || existing.assigned_to,
@@ -128,7 +147,8 @@ export function useCreateLead(operatorId: string) {
       return data;
     },
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: [...LEADS_QUERY_KEY, operatorId] });
+      qc.invalidateQueries({ queryKey: LEADS_QUERY_KEY });
+      qc.invalidateQueries({ queryKey: ["admin-leads"] });
       toast.success(`Lead "${data.name}" registrado como Novo Lead!`);
     },
     onError: (err: Error) => {
@@ -154,8 +174,8 @@ export function useImportLeads(operatorId: string) {
         profession: l.profession || null,
         company: l.company || null,
         temperature: (l.temperature ?? "frio") as "quente" | "morno" | "frio",
-        origin: l.origin ?? "csv",
-        status: "novo" as const,
+        origin: "csv",
+        status: importedLeadStatus(l.is_new),
         assigned_to: operatorId,
         notes: l.notes || null,
         callback_at: l.callback_at || null,
@@ -165,7 +185,7 @@ export function useImportLeads(operatorId: string) {
         data_nascimento: l.data_nascimento || null,
         genero: l.genero || null,
         cep: l.cep || null,
-        historico: [{ ts: now, acao: "importacao_csv", detalhes: "Importado via CSV" }],
+        historico: [{ ts: now, acao: "importacao_csv", detalhes: l.is_new ? "Importado via CSV como novo lead" : "Importado via CSV para carteira" }],
         data_primeiro_cadastro: now,
         data_ultimo_cadastro: now,
       }));
@@ -186,7 +206,8 @@ export function useImportLeads(operatorId: string) {
       return { totalInserted, errors };
     },
     onSuccess: ({ totalInserted, errors }) => {
-      qc.invalidateQueries({ queryKey: [...LEADS_QUERY_KEY, operatorId] });
+      qc.invalidateQueries({ queryKey: LEADS_QUERY_KEY });
+      qc.invalidateQueries({ queryKey: ["admin-leads"] });
       if (errors.length === 0) {
         toast.success(`${totalInserted} leads importados com sucesso!`);
       } else {
@@ -240,7 +261,8 @@ export function useUpdateLead(operatorId: string) {
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: [...LEADS_QUERY_KEY, operatorId] });
+      qc.invalidateQueries({ queryKey: LEADS_QUERY_KEY });
+      qc.invalidateQueries({ queryKey: ["admin-leads"] });
     },
   });
 }
@@ -260,7 +282,8 @@ export function useDeleteLead(operatorId: string) {
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: [...LEADS_QUERY_KEY, operatorId] });
+      qc.invalidateQueries({ queryKey: LEADS_QUERY_KEY });
+      qc.invalidateQueries({ queryKey: ["admin-leads"] });
       toast.success("Lead removido.");
     },
   });
@@ -368,7 +391,8 @@ export function useSeedSampleLeads(operatorId: string) {
       return data;
     },
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: [...LEADS_QUERY_KEY, operatorId] });
+      qc.invalidateQueries({ queryKey: LEADS_QUERY_KEY });
+      qc.invalidateQueries({ queryKey: ["admin-leads"] });
       toast.success(`${data?.length ?? 5} leads fictícios inseridos com sucesso para teste!`);
     },
     onError: (err: Error) => {

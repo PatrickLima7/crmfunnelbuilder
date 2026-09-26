@@ -1,3 +1,5 @@
+import { importedLeadStatus } from "@/lib/lead-categories";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useRef, useState } from "react";
 import { FileUp, AlertCircle, CheckCircle2, ChevronDown, Loader2, X } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -84,6 +86,8 @@ interface LeadImportModalProps {
 type Step = "upload" | "map" | "preview" | "done";
 
 export function LeadImportModal({ open, onClose, operatorId, autoDistribute = false }: LeadImportModalProps) {
+  const qc = useQueryClient();
+  const [importAsNew, setImportAsNew] = useState(false);
   const importLeads = useImportLeads(operatorId ?? "");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -97,6 +101,7 @@ export function LeadImportModal({ open, onClose, operatorId, autoDistribute = fa
 
   const reset = () => {
     setStep("upload");
+    setImportAsNew(false);
     setHeaders([]);
     setRows([]);
     setMapping({} as Record<keyof LeadInput, string>);
@@ -178,7 +183,7 @@ export function LeadImportModal({ open, onClose, operatorId, autoDistribute = fa
         else lead["temperature"] = "morno";
       }
       lead["origin"] = "csv";
-      return lead as LeadInput;
+      return { ...lead, is_new: importAsNew } as LeadInput;
     }).filter((l) => !!l.name);
 
   const handleImport = async () => {
@@ -218,8 +223,8 @@ export function LeadImportModal({ open, onClose, operatorId, autoDistribute = fa
             profession: l.profession || null,
             company: l.company || null,
             temperature: (l.temperature ?? "frio") as "quente" | "morno" | "frio",
-            origin: l.origin ?? "csv",
-            status: "novo" as const,
+            origin: "csv",
+            status: importedLeadStatus(l.is_new),
             assigned_to: assignedOp.id,
             notes: l.notes || null,
             callback_at: l.callback_at || null,
@@ -229,7 +234,7 @@ export function LeadImportModal({ open, onClose, operatorId, autoDistribute = fa
             cep: l.cep || null,
             genero: l.genero || null,
             data_nascimento: l.data_nascimento || null,
-            historico: [{ ts: new Date().toISOString(), acao: "importacao_csv", detalhes: "Importado via CSV" }] as unknown as import("@/lib/supabase-types").Json,
+            historico: [{ ts: new Date().toISOString(), acao: "importacao_csv", detalhes: l.is_new ? "Importado via CSV como novo lead" : "Importado via CSV para carteira" }] as unknown as import("@/lib/supabase-types").Json,
             data_primeiro_cadastro: new Date().toISOString(),
             data_ultimo_cadastro: new Date().toISOString(),
           };
@@ -256,6 +261,8 @@ export function LeadImportModal({ open, onClose, operatorId, autoDistribute = fa
         const res = await importLeads.mutateAsync(rawLeads);
         setResult(res);
       }
+      void qc.invalidateQueries({ queryKey: ["leads"] });
+      void qc.invalidateQueries({ queryKey: ["admin-leads"] });
       setStep("done");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Erro desconhecido";
@@ -325,6 +332,10 @@ export function LeadImportModal({ open, onClose, operatorId, autoDistribute = fa
               <Button variant="ghost" size="sm" onClick={reset}><X className="size-4" /></Button>
             </div>
 
+            <label className="flex items-start gap-2 rounded-lg border p-3 text-sm">
+              <input type="checkbox" checked={importAsNew} onChange={(event) => setImportAsNew(event.target.checked)} />
+              <span>Marcar esta lista como Novos leads (Super quentes). Deixe desmarcado para importar contatos da carteira sem prioridade de novo lead.</span>
+            </label>
             <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
               {LEAD_FIELDS.map(({ key, label, required }) => (
                 <div key={key} className="flex items-center gap-3">
@@ -370,6 +381,7 @@ export function LeadImportModal({ open, onClose, operatorId, autoDistribute = fa
               Prévia dos primeiros 5 leads ({mappedRows().length} total):
             </p>
 
+            <p className="text-xs font-semibold">Classificação: {importAsNew ? "Novo lead · Super quente" : "Carteira · sem prioridade de novo lead"}</p>
             <div className="overflow-x-auto rounded-xl border border-border">
               <table className="w-full text-xs">
                 <thead className="bg-muted">
@@ -388,7 +400,7 @@ export function LeadImportModal({ open, onClose, operatorId, autoDistribute = fa
                       <td className="px-2 py-1.5">{lead.city ?? "—"}</td>
                       <td className="px-2 py-1.5">{lead.midia ?? "—"}</td>
                       <td className="px-2 py-1.5">{lead.curso ?? "—"}</td>
-                      <td className="px-2 py-1.5 capitalize">{lead.temperature ?? "morno"}</td>
+                      <td className="px-2 py-1.5 capitalize">{lead.temperature ?? "frio"}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -91,11 +91,11 @@ export function LeadPanel({ operator }: { operator: string }) {
               </div>
               <div className="flex shrink-0 flex-col items-end gap-2">
                 {crm.lead.isNew && (
-                  <Badge className="bg-success text-success-foreground">Lead novo</Badge>
+                  <Badge className="bg-success text-success-foreground">Novo lead · Super quente</Badge>
                 )}
-                <Badge className={statusColor + " capitalize"}>
+                {!crm.lead.isNew && <Badge className={statusColor + " capitalize"}>
                   {crm.lead.status}
-                </Badge>
+                </Badge>}
                 <span
                   className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 font-mono text-sm ${
                     stepLate

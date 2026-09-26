@@ -28,14 +28,13 @@ async function pushPresence(
 // ─── Priority Queue Fetcher ───────────────────────────────────────────────────
 // Sequence: 1. Novo Lead -> 2. Retornos Agendados -> 3. Quente -> 4. Morno -> 5. Frio -> 6. Em Nutrição
 async function fetchNextPriorityLead(operatorId: string) {
-  // 1. Novo Lead (novo / pending)
+  // 1. Novo Lead — explicit intake priority only
   const { data: novos } = await supabase
     .from("leads")
     .select("*")
     .eq("assigned_to", operatorId)
-    .or(`callback_at.is.null,callback_at.lte.${new Date().toISOString()}`)
-    .in("status", ["novo", "pending"])
-    .order("created_at", { ascending: true })
+    .eq("status", "novo")
+    .order("data_ultimo_cadastro", { ascending: true })
     .limit(1);
 
   if (novos && novos.length > 0) return novos[0]!;
@@ -284,7 +283,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
           name: target.name,
           phone: target.phone ?? "",
           profession: target.profession ?? "Cliente cadastrado",
-          isNew: target.status === "novo" || target.status === "pending",
+          isNew: target.status === "novo",
           status: (target.temperature ?? "morno") as LeadStatus,
           returnTime: "10:00",
           email: target.email,
@@ -360,7 +359,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString();
   
       const [opp, ret, hot, conv] = await Promise.all([
-        supabase.from("leads").select("id", { count: "exact", head: true }).eq("assigned_to", operatorId).in("status", ["novo", "pending"]),
+        supabase.from("leads").select("id", { count: "exact", head: true }).eq("assigned_to", operatorId).eq("status", "novo"),
         supabase.from("leads").select("id", { count: "exact", head: true }).eq("assigned_to", operatorId).not("callback_at", "is", null).lte("callback_at", todayEnd),
         supabase.from("leads").select("id", { count: "exact", head: true }).eq("assigned_to", operatorId).eq("temperature", "quente"),
         supabase.from("leads").select("id", { count: "exact", head: true }).eq("assigned_to", operatorId).eq("status", "converted").gte("updated_at", monthStart),
@@ -753,7 +752,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
           name: target.name,
           phone: target.phone ?? "(11) 99999-9999",
           profession: target.profession ?? "Cliente cadastrado",
-          isNew: false,
+          isNew: target.status === "novo",
           status: (target.temperature ?? target.status ?? "morno") as import("./crm-data").LeadStatus,
           returnTime: "10:00",
           email: (target as any).email,
@@ -792,7 +791,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
           name: target.name,
           phone: target.phone ?? "",
           profession: target.profession ?? "Cliente cadastrado",
-          isNew: target.status === "novo" || target.status === "pending",
+          isNew: target.status === "novo",
           status: (target.temperature ?? "morno") as LeadStatus,
           returnTime: "10:00",
           email: target.email,

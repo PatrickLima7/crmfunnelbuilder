@@ -1,3 +1,4 @@
+import { crmDay, crmTime, crmDateTimeToIso } from "@/lib/lead-categories";
 import { useEffect, useState } from "react";
 import { Calendar as CalendarIcon, Clock } from "lucide-react";
 import { Label } from "@/components/ui/label";
@@ -20,31 +21,9 @@ export function DateTimePicker({
   error,
   className = "",
 }: DateTimePickerProps) {
-  // Helper to extract YYYY-MM-DD and HH:mm from ISO or date string
   const parseInitialValue = (val?: string | null) => {
-    if (!val) {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(10, 0, 0, 0);
-      return {
-        date: tomorrow.toISOString().slice(0, 10),
-        time: "10:00",
-      };
-    }
-    try {
-      const d = new Date(val);
-      if (isNaN(d.getTime())) throw new Error("Invalid date");
-      const date = d.toISOString().slice(0, 10);
-      const time = d.toTimeString().slice(0, 5);
-      return { date, time };
-    } catch {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      return {
-        date: tomorrow.toISOString().slice(0, 10),
-        time: "10:00",
-      };
-    }
+    if (!val || !crmDay(val)) return { date: "", time: "10:00" };
+    return { date: crmDay(val)!, time: crmTime(val) };
   };
 
   const initial = parseInitialValue(value);
@@ -52,11 +31,9 @@ export function DateTimePicker({
   const [time, setTime] = useState(initial.time);
 
   useEffect(() => {
-    if (value) {
-      const parsed = parseInitialValue(value);
-      setDate(parsed.date);
-      setTime(parsed.time);
-    }
+    const parsed = parseInitialValue(value);
+    setDate(parsed.date);
+    setTime(parsed.time);
   }, [value]);
 
   const updateDateTime = (newDate: string, newTime: string) => {
@@ -64,8 +41,7 @@ export function DateTimePicker({
     setTime(newTime);
     if (newDate && newTime) {
       try {
-        const selected = new Date(`${newDate}T${newTime}`);
-        onChange(selected.toISOString());
+        onChange(crmDateTimeToIso(newDate, newTime));
       } catch {
         /* invalid date format */
       }
@@ -106,6 +82,7 @@ export function DateTimePicker({
         </div>
       </div>
 
+      <p className="text-[10px] text-muted-foreground">Horário de Brasília</p>
       {error && <p className="text-xs font-bold text-destructive mt-1">{error}</p>}
     </div>
   );

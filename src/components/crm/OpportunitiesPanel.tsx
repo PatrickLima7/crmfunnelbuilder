@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { matchesLeadFilter, type LeadFilter, CRM_TIME_ZONE } from "@/lib/lead-categories";
+import { useEffect, useState } from "react";
 import {
   Bell, Calendar, Clock, Flame, FileUp, Layers,
   PhoneCall, Plus, Search, Snowflake, Thermometer,
@@ -80,72 +81,38 @@ const ORIGINS = [
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
   const crm = useCrm();
-  const { data: leads = [], isLoading } = useLeads(operatorId);
+  const { data: leads = [], isLoading, isError } = useLeads(operatorId);
   const createLead = useCreateLead(operatorId);
   const updateLead = useUpdateLead(operatorId);
 
   const [search, setSearch] = useState("");
-  const [filterTab, setFilterTab] = useState<"novo" | "callbacks" | "quente" | "morno" | "frio" | "nutricao" | "all">("all");
+  const [filterTab, setFilterTab] = useState<LeadFilter>("novo");
   const [openForm, setOpenForm] = useState(false);
   const [openImport, setOpenImport] = useState(false);
-
-  const nowIso = new Date().toISOString();
-  const callbacksDue = leads.filter((l) => l.callback_at && l.callback_at <= nowIso);
-  const allCallbacks = leads.filter((l) => !!l.callback_at);
-
-  const searchedLeads = leads.filter((l) => {
-    return (
-      !search ||
-      l.name.toLowerCase().includes(search.toLowerCase()) ||
-      (l.phone ?? "").includes(search) ||
-      (l.company ?? "").toLowerCase().includes(search.toLowerCase())
-    );
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 15000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const filters: LeadFilter[] = ["novo", "callbacks", "future", "quente", "morno", "frio", "nutricao", "converted", "all"];
+  const labels: Record<LeadFilter, string> = {
+    novo: "Novo lead · Super quente", callbacks: "Retornos pendentes", future: "Retornos futuros",
+    quente: "Quente", morno: "Morno", frio: "Frio", nutricao: "Em nutrição", converted: "Convertidos", all: "Todos",
+  };
+  const searchedLeads = leads.filter((lead) => {
+    const term = search.trim().toLocaleLowerCase("pt-BR");
+    return !term || [lead.name, lead.phone, lead.company].some((value) => value?.toLocaleLowerCase("pt-BR").includes(term));
   });
-
-  const novosSection = searchedLeads.filter(
-    (l) => l.status === "novo" || l.status === "pending"
-  );
-
-  const retornosSection = searchedLeads
-    .filter((l) => !!l.callback_at && l.status !== "novo" && l.status !== "pending")
-    .sort((a, b) => new Date(a.callback_at!).getTime() - new Date(b.callback_at!).getTime());
-
-  const quentesSection = searchedLeads.filter(
-    (l) => !l.callback_at && l.temperature === "quente" && l.status !== "novo" && l.status !== "pending" && l.status !== "em_nutricao"
-  );
-
-  const mornosSection = searchedLeads.filter(
-    (l) => !l.callback_at && l.temperature === "morno" && l.status !== "novo" && l.status !== "pending" && l.status !== "em_nutricao"
-  );
-
-  const friosSection = searchedLeads.filter(
-    (l) => !l.callback_at && (l.temperature === "frio" || !l.temperature) && l.status !== "novo" && l.status !== "pending" && l.status !== "em_nutricao"
-  );
-
-  const nutricaoSection = searchedLeads.filter((l) => l.status === "em_nutricao");
-
-  const singleTabList =
-    filterTab === "novo"
-      ? novosSection
-      : filterTab === "callbacks"
-        ? retornosSection
-        : filterTab === "quente"
-          ? quentesSection
-          : filterTab === "morno"
-            ? mornosSection
-            : filterTab === "frio"
-              ? friosSection
-              : filterTab === "nutricao"
-                ? nutricaoSection
-                : [];
-
-  const totalAllSections =
-    novosSection.length + retornosSection.length + quentesSection.length + mornosSection.length + friosSection.length + nutricaoSection.length;
-
-  const novoCount = leads.filter((l) => l.status === "novo" || l.status === "pending").length;
-  const quenteCount = leads.filter((l) => l.temperature === "quente" && l.status !== "novo" && l.status !== "pending").length;
-  const mornoCount  = leads.filter((l) => l.temperature === "morno" && l.status !== "novo" && l.status !== "pending").length;
-  const frioCount   = leads.filter((l) => l.temperature === "frio" && l.status !== "novo" && l.status !== "pending").length;
+  const callbacksDue = leads.filter((lead) => matchesLeadFilter(lead, "callbacks", now));
+  const futureCallbacks = leads.filter((lead) => matchesLeadFilter(lead, "future", now));
+  const newLeads = leads.filter((lead) => matchesLeadFilter(lead, "novo", now));
+  const singleTabList = searchedLeads.filter((lead) => matchesLeadFilter(lead, filterTab, now))
+    .sort((a, b) => {
+      if (filterTab === "all" && (a.status === "novo") !== (b.status === "novo")) return a.status === "novo" ? -1 : 1;
+      if (filterTab === "callbacks" || filterTab === "future") return Date.parse(a.callback_at!) - Date.parse(b.callback_at!);
+      if (a.status === "novo" && b.status === "novo") return Date.parse(a.data_ultimo_cadastro ?? a.created_at) - Date.parse(b.data_ultimo_cadastro ?? b.created_at);
+      return 0;
+    });
 
   return (
     <aside className="flex min-h-0 flex-col gap-2 border-border bg-sidebar p-3 lg:h-full lg:overflow-hidden lg:border-l">
@@ -189,45 +156,20 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
         </button>
       )}
 
-      {/* Filter Pills — Sequência Fixa: Novo Lead -> Retornos -> Quente -> Morno -> Frio -> Em Nutrição -> Todos */}
+      {newLeads.length > 0 && (
+        <button onClick={() => setFilterTab("novo")} className="rounded-lg border border-primary bg-primary/10 p-2 text-left text-xs font-bold text-primary">
+          <Sparkles className="mr-1 inline size-4" /> {newLeads.length} novo(s) lead(s) — prioridade máxima. Atenda no primeiro minuto.
+        </button>
+      )}
       <div className="flex shrink-0 flex-wrap gap-1.5">
-        {(["novo", "callbacks", "quente", "morno", "frio", "nutricao", "all"] as const).map((t) => {
-          const count =
-            t === "novo" ? novoCount :
-            t === "callbacks" ? allCallbacks.length :
-            t === "quente" ? quenteCount :
-            t === "morno" ? mornoCount :
-            t === "frio" ? frioCount :
-            t === "nutricao" ? leads.filter(l => l.status === "em_nutricao").length :
-            leads.length;
-
-          const label =
-            t === "novo" ? "Novo Lead" :
-            t === "callbacks" ? "Retornos" :
-            t === "nutricao" ? "Em Nutrição" :
-            t === "all" ? "Todos" :
-            TEMP_CONFIG[t as Temperature].label;
-
-          const Icon =
-            t === "novo" ? Sparkles :
-            t === "callbacks" ? Calendar :
-            t === "nutricao" ? Sprout :
-            t === "all" ? Layers :
-            TEMP_CONFIG[t as Temperature].icon;
-
-          const active = filterTab === t;
-          return (
-            <button key={t} onClick={() => setFilterTab(t)}
-              className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors ${
-                active ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:border-primary/40"
-              }`}
-            >
-              {Icon && <Icon className="size-3" />}
-              {label} ({count})
-            </button>
-          );
-        })}
+        {filters.map((filter) => (
+          <button key={filter} onClick={() => setFilterTab(filter)}
+            className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${filterTab === filter ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>
+            {labels[filter]} ({searchedLeads.filter((lead) => matchesLeadFilter(lead, filter, now)).length})
+          </button>
+        ))}
       </div>
+      <p className="text-[10px] text-muted-foreground">Super quente: novo lead. Quente: interessado. Morno: indeciso ou retorno. Frio: sem resposta. Classificação ajustável após contato.</p>
 
       {/* Search */}
       <div className="relative shrink-0">
@@ -241,6 +183,7 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
         )}
       </div>
 
+      {isError && <p role="alert" className="text-xs text-destructive">Falha ao atualizar a carteira. Confira sua conexão e tente novamente.</p>}
       {/* Lead List */}
       <div className="min-h-0 flex-1 overflow-y-auto space-y-4 pr-1">
         {isLoading && (
@@ -249,178 +192,14 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
           </div>
         )}
 
-        {!isLoading && filterTab === "all" && totalAllSections === 0 && (
-          <div className="flex h-28 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border">
-            <Layers className="size-6 text-muted-foreground" />
-            <p className="text-xs text-muted-foreground text-center px-4">
-              {leads.length === 0
-                ? 'Nenhum lead cadastrado ainda. Clique em "Novo lead" para cadastrar.'
-                : "Nenhum lead corresponde à busca."}
-            </p>
-          </div>
+        {!isLoading && singleTabList.length === 0 && (
+          <p className="rounded-xl border border-dashed p-4 text-center text-xs text-muted-foreground">Nenhum lead corresponde a este filtro e busca.</p>
         )}
-
-        {!isLoading && filterTab !== "all" && singleTabList.length === 0 && (
-          <div className="flex h-28 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border">
-            <Layers className="size-6 text-muted-foreground" />
-            <p className="text-xs text-muted-foreground text-center px-4">
-              Nenhum lead nesta categoria.
-            </p>
-          </div>
-        )}
-
-        {/* ── Aba "Todos": Ordem Fixa de Prioridade (1. Novo Lead -> 2. Retornos -> 3. Quentes -> 4. Mornos -> 5. Frios -> 6. Em Nutrição) ── */}
-        {!isLoading && filterTab === "all" && (
-          <>
-            {/* 1. Novo Lead */}
-            {novosSection.length > 0 && (
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 px-1 font-bold text-[11px] text-primary uppercase tracking-wide">
-                  <Sparkles className="size-3.5" />
-                  <span>Novos Leads ({novosSection.length})</span>
-                </div>
-                <div className="space-y-2">
-                  {novosSection.map((lead) => (
-                    <LeadCard
-                      key={lead.id}
-                      lead={lead}
-                      isSelected={crm.lead.realId === lead.id}
-                      onSelect={() => crm.selectLead(lead as any)}
-                      onUpdate={(updates) => updateLead.mutate({ id: lead.id, updates })}
-                      operatorId={operatorId}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* 2. Retornos */}
-            {retornosSection.length > 0 && (
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 px-1 font-bold text-[11px] text-warning uppercase tracking-wide">
-                  <Calendar className="size-3.5" />
-                  <span>Retornos Agendados ({retornosSection.length})</span>
-                </div>
-                <div className="space-y-2">
-                  {retornosSection.map((lead) => (
-                    <LeadCard
-                      key={lead.id}
-                      lead={lead}
-                      isSelected={crm.lead.realId === lead.id}
-                      onSelect={() => crm.selectLead(lead as any)}
-                      onUpdate={(updates) => updateLead.mutate({ id: lead.id, updates })}
-                      operatorId={operatorId}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* 3. Quentes */}
-            {quentesSection.length > 0 && (
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 px-1 font-bold text-[11px] text-hot uppercase tracking-wide">
-                  <Flame className="size-3.5" />
-                  <span>Quentes ({quentesSection.length})</span>
-                </div>
-                <div className="space-y-2">
-                  {quentesSection.map((lead) => (
-                    <LeadCard
-                      key={lead.id}
-                      lead={lead}
-                      isSelected={crm.lead.realId === lead.id}
-                      onSelect={() => crm.selectLead(lead as any)}
-                      onUpdate={(updates) => updateLead.mutate({ id: lead.id, updates })}
-                      operatorId={operatorId}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* 4. Mornos */}
-            {mornosSection.length > 0 && (
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 px-1 font-bold text-[11px] text-warm uppercase tracking-wide">
-                  <Thermometer className="size-3.5" />
-                  <span>Mornos ({mornosSection.length})</span>
-                </div>
-                <div className="space-y-2">
-                  {mornosSection.map((lead) => (
-                    <LeadCard
-                      key={lead.id}
-                      lead={lead}
-                      isSelected={crm.lead.realId === lead.id}
-                      onSelect={() => crm.selectLead(lead as any)}
-                      onUpdate={(updates) => updateLead.mutate({ id: lead.id, updates })}
-                      operatorId={operatorId}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* 5. Frios */}
-            {friosSection.length > 0 && (
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 px-1 font-bold text-[11px] text-muted-foreground uppercase tracking-wide">
-                  <Snowflake className="size-3.5" />
-                  <span>Frios ({friosSection.length})</span>
-                </div>
-                <div className="space-y-2">
-                  {friosSection.map((lead) => (
-                    <LeadCard
-                      key={lead.id}
-                      lead={lead}
-                      isSelected={crm.lead.realId === lead.id}
-                      onSelect={() => crm.selectLead(lead as any)}
-                      onUpdate={(updates) => updateLead.mutate({ id: lead.id, updates })}
-                      operatorId={operatorId}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* 6. Em Nutrição */}
-            {nutricaoSection.length > 0 && (
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 px-1 font-bold text-[11px] text-purple-500 uppercase tracking-wide">
-                  <Sprout className="size-3.5" />
-                  <span>Em Nutrição ({nutricaoSection.length})</span>
-                </div>
-                <div className="space-y-2">
-                  {nutricaoSection.map((lead) => (
-                    <LeadCard
-                      key={lead.id}
-                      lead={lead}
-                      isSelected={crm.lead.realId === lead.id}
-                      onSelect={() => crm.selectLead(lead as any)}
-                      onUpdate={(updates) => updateLead.mutate({ id: lead.id, updates })}
-                      operatorId={operatorId}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ── Abas de filtro individual (Retornos, Quente, Morno, Frio, Em Nutrição) ── */}
-        {!isLoading && filterTab !== "all" && (
-          <div className="space-y-2">
-            {singleTabList.map((lead) => (
-              <LeadCard
-                key={lead.id}
-                lead={lead}
-                isSelected={crm.lead.realId === lead.id}
-                onSelect={() => crm.selectLead(lead as any)}
-                onUpdate={(updates) => updateLead.mutate({ id: lead.id, updates })}
-                operatorId={operatorId}
-              />
-            ))}
-          </div>
-        )}
+        {!isLoading && singleTabList.map((lead) => (
+          <LeadCard key={lead.id} lead={lead} isSelected={crm.lead.realId === lead.id}
+            onSelect={() => crm.selectLead(lead as any)}
+            onUpdate={(updates) => updateLead.mutate({ id: lead.id, updates })} operatorId={operatorId} />
+        ))}
       </div>
 
       {/* Summary */}
@@ -432,7 +211,9 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
           <span className="text-muted-foreground">Total na carteira</span>
           <span className="text-right font-mono font-bold">{leads.length}</span>
           <span className="text-muted-foreground">Retornos pendentes</span>
-          <span className="text-right font-mono font-bold text-warning">{allCallbacks.length}</span>
+          <span className="text-right font-mono font-bold text-warning">{callbacksDue.length}</span>
+          <span className="text-muted-foreground">Retornos futuros</span>
+          <span className="text-right font-mono font-bold">{futureCallbacks.length}</span>
           <span className="text-muted-foreground">Convertidos</span>
           <span className="text-right font-mono font-bold text-success">
             {leads.filter((l) => l.status === "converted").length}
@@ -452,7 +233,9 @@ function LeadCard({ lead, isSelected, onSelect, onUpdate, operatorId }: {
   operatorId: string;
 }) {
   const deleteLead = useDeleteLead(operatorId);
-  const temp = TEMP_CONFIG[lead.temperature as Temperature] ?? TEMP_CONFIG.morno;
+  const temp = lead.status === "novo"
+    ? { label: "Super quente", icon: Sparkles, badge: "bg-primary/15 text-primary border-primary/30" }
+    : TEMP_CONFIG[lead.temperature as Temperature] ?? { label: "Não classificado", icon: Thermometer, badge: "bg-muted text-muted-foreground" };
   const Icon = temp.icon;
   const [showScheduler, setShowScheduler] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
@@ -462,7 +245,7 @@ function LeadCard({ lead, isSelected, onSelect, onUpdate, operatorId }: {
   if (lead.callback_at) {
     const cbDate = new Date(lead.callback_at);
     isCallbackDue = cbDate <= new Date();
-    callbackFormatted = cbDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    callbackFormatted = cbDate.toLocaleDateString("pt-BR", { timeZone: CRM_TIME_ZONE, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   }
 
   return (
@@ -489,6 +272,13 @@ function LeadCard({ lead, isSelected, onSelect, onUpdate, operatorId }: {
         </div>
       </div>
 
+      {lead.status === "novo" && (
+        <p className="mt-2 text-[10px] font-bold text-primary">
+          {Date.now() - Date.parse(lead.data_ultimo_cadastro ?? lead.created_at) >= 60000
+            ? "Prioridade: novo lead aguardando há mais de 1 minuto."
+            : "Novo lead: faça o primeiro contato agora."}
+        </p>
+      )}
       {/* Expanded detail */}
       {showDetail && (
         <div className="mt-2 rounded-lg border border-border/50 bg-background/60 p-2 space-y-0.5">
@@ -557,7 +347,7 @@ function LeadCard({ lead, isSelected, onSelect, onUpdate, operatorId }: {
       {/* Quick status row */}
       <div className="mt-1.5 flex flex-wrap gap-1">
         {(["quente", "morno", "frio"] as Temperature[]).map((t) => (
-          <button key={t} disabled={lead.temperature === t} onClick={() => onUpdate({ temperature: t })}
+          <button key={t} disabled={lead.temperature === t && lead.status !== "novo"} onClick={() => onUpdate({ temperature: t, ...(lead.status === "novo" ? { status: "contacted" as const } : {}) })}
             className={`rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
               lead.temperature === t ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground hover:bg-muted/70"
             }`}>
@@ -579,7 +369,7 @@ function LeadCard({ lead, isSelected, onSelect, onUpdate, operatorId }: {
             label="Reagendar retorno exato:"
             value={lead.callback_at}
             onChange={(iso) => {
-              onUpdate({ callback_at: iso });
+              onUpdate({ callback_at: iso || null, ...(lead.status === "novo" ? { status: "contacted" as const } : {}) });
               setShowScheduler(false);
             }}
           />
@@ -598,9 +388,6 @@ function LeadForm({ onSubmit, loading }: {
   const { data: cursos = [] } = useActiveCursos();
 
   const [form, setForm] = useState<LeadInput>(() => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(10, 0, 0, 0);
 
     return {
       name: "",
@@ -611,7 +398,7 @@ function LeadForm({ onSubmit, loading }: {
       city: "Divinópolis",
       state: "MG",
       origin: "manual",
-      callback_at: tomorrow.toISOString(),
+      callback_at: "",
     };
   });
 
@@ -633,7 +420,6 @@ function LeadForm({ onSubmit, loading }: {
     if (!form.temperature) { setErrorMsg("Selecione a Temperatura."); return; }
     if (!form.city?.trim()) { setErrorMsg("O campo Cidade é obrigatório."); return; }
     if (!form.state?.trim()) { setErrorMsg("O campo Estado é obrigatório."); return; }
-    if (!form.callback_at) { setErrorMsg("Selecione a Data e Hora de contato."); return; }
 
     setErrorMsg(null);
     await onSubmit({
@@ -794,14 +580,13 @@ function LeadForm({ onSubmit, loading }: {
         {/* ── Aba 2: Agendamento ── */}
         <TabsContent value="agendamento" className="space-y-4">
           <DateTimePicker
-            label="Data e hora de primeiro contato *"
+            label="Retorno agendado (opcional)"
             value={form.callback_at}
             onChange={(iso) => setForm((f) => ({ ...f, callback_at: iso }))}
-            required
           />
 
           <div className="rounded-lg bg-muted/40 p-3 border border-border text-xs text-muted-foreground">
-            💡 O consultor pode agendar livremente para qualquer data e horário futuro.
+            Novo lead tem prioridade imediata. O retorno é opcional e não substitui o primeiro contato.
           </div>
         </TabsContent>
       </Tabs>
