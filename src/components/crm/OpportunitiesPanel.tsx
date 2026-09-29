@@ -21,7 +21,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { useCrm } from "@/lib/crm-store";
+import { useOptionalCrm } from "@/lib/crm-store";
 import { useLeads, useCreateLead, useUpdateLead, useDeleteLead, type LeadInput } from "@/hooks/useLeads";
 import { useActiveMidias } from "@/hooks/useMidias";
 import { useActiveCursos, DEFAULT_CURSO_NAME } from "@/hooks/useCursos";
@@ -79,14 +79,19 @@ const ORIGINS = [
 ];
 
 // ─── Main Panel ───────────────────────────────────────────────────────────────
-export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
-  const crm = useCrm();
-  const { data: leads = [], isLoading, isError } = useLeads(operatorId);
+export function OpportunitiesPanel({ operatorId, leadData, selectedLeadId, onSelectLead }: {
+  operatorId: string; leadData?: Lead[]; selectedLeadId?: string | undefined; onSelectLead?: (lead: Lead) => void;
+}) {
+  const crm = useOptionalCrm();
+  const query = useLeads(operatorId, leadData === undefined);
+  const leads = leadData ?? query.data ?? [];
+  const isLoading = leadData === undefined && query.isLoading;
+  const isError = leadData === undefined && query.isError;
   const createLead = useCreateLead(operatorId);
   const updateLead = useUpdateLead(operatorId);
 
   const [search, setSearch] = useState("");
-  const [filterTab, setFilterTab] = useState<LeadFilter>("novo");
+  const [filterTab, setFilterTab] = useState<LeadFilter>(onSelectLead ? "all" : "novo");
   const [openForm, setOpenForm] = useState(false);
   const [openImport, setOpenImport] = useState(false);
   const [now, setNow] = useState(() => new Date());
@@ -196,8 +201,8 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
           <p className="rounded-xl border border-dashed p-4 text-center text-xs text-muted-foreground">Nenhum lead corresponde a este filtro e busca.</p>
         )}
         {!isLoading && singleTabList.map((lead) => (
-          <LeadCard key={lead.id} lead={lead} isSelected={crm.lead.realId === lead.id}
-            onSelect={() => crm.selectLead(lead as any)}
+          <LeadCard key={lead.id} lead={lead} isSelected={(selectedLeadId ?? crm?.lead.realId) === lead.id} supervising={!!onSelectLead}
+            onSelect={() => onSelectLead ? onSelectLead(lead) : crm?.selectLead(lead as any)}
             onUpdate={(updates) => updateLead.mutate({ id: lead.id, updates })} operatorId={operatorId} />
         ))}
       </div>
@@ -225,7 +230,8 @@ export function OpportunitiesPanel({ operatorId }: { operatorId: string }) {
 }
 
 // ─── LeadCard ─────────────────────────────────────────────────────────────────
-function LeadCard({ lead, isSelected, onSelect, onUpdate, operatorId }: {
+function LeadCard({ lead, isSelected, onSelect, onUpdate, operatorId, supervising = false }: {
+  supervising?: boolean;
   lead: Lead;
   isSelected?: boolean;
   onSelect: () => void;
@@ -316,7 +322,7 @@ function LeadCard({ lead, isSelected, onSelect, onUpdate, operatorId }: {
       {/* Actions */}
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-border/50 pt-2">
         <Button size="sm" variant={isSelected ? "success" : "default"} className="h-7 flex-1 gap-1 text-[11px]" onClick={onSelect}>
-          <PhoneCall className="size-3" /> {isSelected ? "Em atendimento" : "Atender"}
+          <PhoneCall className="size-3" /> {supervising ? (isSelected ? "Selecionado" : "Ver lead") : (isSelected ? "Em atendimento" : "Atender")}
         </Button>
         <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" onClick={() => setShowScheduler(!showScheduler)}>
           <Calendar className="size-3" />

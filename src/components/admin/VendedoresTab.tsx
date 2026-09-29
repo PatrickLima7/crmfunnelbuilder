@@ -1,3 +1,5 @@
+import { callAccountFunction } from "@/lib/account-actions";
+import { ConsultantAccessDialog } from "./ConsultantAccessDialog";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Shield, Target, User, UserCheck, UserX, Check, Power, Search, Trash2 } from "lucide-react";
@@ -27,17 +29,13 @@ function useVendedores() {
 function useCreateOperator() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ email, name, goal }: { email: string; name: string; goal: number }) => {
-      const { data, error } = await supabase.functions.invoke("create-operator", {
-        body: { email, name, goal },
-      });
-      if (error) throw new Error("Não foi possível criar o consultor. Verifique a função create-operator no Supabase.");
-      if (!data?.tempPassword) throw new Error(data?.error ?? "Resposta inválida do servidor.");
-      return data as { tempPassword: string };
-
+    mutationFn: async (input: { password: string; name: string; goal: number }) => {
+      const data = await callAccountFunction<{ username: string }>("create-operator", { action: "create", ...input });
+      if (!data?.username) throw new Error("Atualize a função create-operator no Supabase antes de usar este cadastro.");
+      return data;
     },
-    onSuccess: ({ tempPassword }) => {
-      toast.success(`Consultor criado com sucesso! Senha temporária: ${tempPassword}`);
+    onSuccess: ({ username }) => {
+      toast.success(`Consultor criado. Usuário: ${username}. Use a senha definida no cadastro.`, { duration: 10000 });
       qc.invalidateQueries({ queryKey: ["profiles"] });
     },
     onError: (err: Error) => {
@@ -121,7 +119,7 @@ export function VendedoresTab() {
   const deleteProfile = useDeleteProfile();
   const { data: leadCounts = {} } = useLeadCounts();
   const [open, setOpen] = useState(false);
-  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [newName, setNewName] = useState("");
   const [newGoal, setNewGoal] = useState<number>(80);
   const [searchTerm, setSearchTerm] = useState("");
@@ -132,8 +130,8 @@ export function VendedoresTab() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    await createOp.mutateAsync({ email: newEmail, name: newName, goal: newGoal });
-    setNewEmail("");
+    try { await createOp.mutateAsync({ password: newPassword, name: newName, goal: newGoal }); } catch { return; }
+    setNewPassword("");
     setNewName("");
     setNewGoal(80);
     setOpen(false);
@@ -156,7 +154,7 @@ export function VendedoresTab() {
             {operators.length} consultores ({operators.filter((o) => o.active !== false).length} ativos) · {admins.length} admin(s)
           </p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) setNewPassword(""); }}>
           <DialogTrigger asChild>
             <Button size="sm">
               <Plus /> Novo consultor
@@ -177,12 +175,14 @@ export function VendedoresTab() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>E-mail corporativo</Label>
+                <Label>Senha inicial (mínimo 8 caracteres)</Label>
                 <Input
-                  type="email"
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  placeholder="joao@empresa.com"
+                  type="password"
+                  value={newPassword}
+                  minLength={8}
+                  maxLength={128}
+                  autoComplete="new-password"
+                  onChange={(e) => setNewPassword(e.target.value)}
                   required
                 />
               </div>
@@ -196,13 +196,13 @@ export function VendedoresTab() {
                 />
               </div>
               <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-                Uma senha temporária será gerada e exibida após a criação.
+                O usuário será gerado a partir do nome e aparecerá na lista. Informe ao consultor esse usuário e a senha que você definiu; nenhum e-mail será enviado.
               </p>
               <div className="flex gap-2">
                 <Button type="submit" disabled={createOp.isPending} className="flex-1">
                   {createOp.isPending ? "Criando..." : "Criar consultor"}
                 </Button>
-                <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
+                <Button type="button" variant="secondary" onClick={() => { setNewPassword(""); setOpen(false); }}>
                   Cancelar
                 </Button>
               </div>
@@ -315,6 +315,7 @@ function ProfileRow({
             {isActive ? "Ativo" : "Inativo"}
           </span>
         </div>
+        <p className="break-all text-xs text-primary">Usuário: <strong>{profile.username ?? "Aplique a migração de usuários"}</strong></p>
         <p className="flex items-center gap-1 text-[11px] text-muted-foreground">
           {profile.role === "admin" ? (
             <><Shield className="size-3 text-primary" /> Admin</>
@@ -357,6 +358,7 @@ function ProfileRow({
       )}
 
       <div className="flex items-center gap-1.5 ml-auto">
+        {profile.role === "operator" && <ConsultantAccessDialog profile={profile} />}
         {onToggleActive && (
           <Button
             size="sm"

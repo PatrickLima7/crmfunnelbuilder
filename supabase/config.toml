@@ -1,0 +1,5 @@
+[functions.create-operator]
+verify_jwt = true
+
+[functions.login-username]
+verify_jwt = false

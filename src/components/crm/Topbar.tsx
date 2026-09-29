@@ -1,3 +1,6 @@
+import { closeShiftAndSignOut } from "@/lib/shift-actions";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { AlertTriangle, Bell, Coffee, Flame, LogOut, Play, Square, Sparkles, Loader2 } from "lucide-react";
@@ -19,6 +22,8 @@ import { ExpedienteFinishModal } from "./ExpedienteFinishModal";
 
 export function Topbar({ operator, operatorId }: { operator: string; operatorId?: string }) {
   const crm = useCrm();
+  const qc = useQueryClient();
+  const [signingOut, setSigningOut] = useState(false);
   const navigate = useNavigate();
   const { data: pauseTypes = [] } = useActivePauseTypes();
   const seedLeads = useSeedSampleLeads(operatorId ?? "");
@@ -41,6 +46,8 @@ export function Topbar({ operator, operatorId }: { operator: string; operatorId?
     try {
       await crm.finishShift();
       setShowFinishModal(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao finalizar expediente.");
     } finally {
       setFinishing(false);
     }
@@ -155,9 +162,16 @@ export function Topbar({ operator, operatorId }: { operator: string; operatorId?
           <Button
             variant="ghost"
             size="sm"
+            disabled={signingOut || finishing}
             onClick={async () => {
-              await supabase.auth.signOut();
-              navigate({ to: "/", replace: true });
+              setSigningOut(true);
+              try {
+                await crm.finishShift();
+                await closeShiftAndSignOut();
+                qc.clear();
+                await navigate({ to: "/", replace: true });
+              } catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível sair."); }
+              finally { setSigningOut(false); }
             }}
             title="Sair do sistema"
           >

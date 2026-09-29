@@ -23,6 +23,7 @@ const client = {
       single: async () => updating
         ? { data: scenario.failProfile ? null : { id: 'new-id' }, error: scenario.failProfile ? {} : null }
         : { data: { role: scenario.role, active: scenario.active }, error: null },
+      maybeSingle: async () => ({ data: null, error: null }),
     };
     return query;
   },

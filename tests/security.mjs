@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 // Isolated PostgreSQL. No network, production credentials or real customer data.
 const db = new PGlite();
 await db.exec(`
-  create role anon; create role authenticated;
+  create role anon; create role authenticated; create role service_role;
   create schema auth;
   create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb);
   create function auth.uid() returns uuid language sql as
@@ -94,6 +94,55 @@ assert.equal(statuses['reregistered-csv'], 'novo');
 assert.equal(statuses['campaign-intake'], 'novo');
 assert.equal(statuses['manual-intake'], 'novo');
 assert.equal(statuses['closed-import'], 'converted');
+
+// Username uniqueness and private login throttling.
+await db.query('update public.profiles set active = true where id in ($1, $2)', [ids.admin, ids.operator]);
+await db.query("update public.profiles set username = 'Ana.Silva' where id = $1", [ids.operator]);
+assert.equal((await db.query('select username from public.profiles where id = $1', [ids.operator])).rows[0].username, 'ana.silva');
+await assert.rejects(db.query("update public.profiles set username = 'ANA.SILVA' where id = $1", [ids.other]), /unique/);
+await asUser(ids.operator, async () => {
+  await assert.rejects(db.query("select public.consume_username_login_attempt(repeat('a',64))"), /permission denied/);
+  await assert.rejects(db.query("select * from private.login_attempts"), /permission denied/);
+  await assert.rejects(db.query("select public.admin_append_lead_note(gen_random_uuid(), 'bad')"), /restrito/);
+});
+await db.exec('set role service_role');
+for (let i = 1; i <= 21; i++) {
+  const response = await db.query("select public.consume_username_login_attempt(repeat('a',64)) as allowed");
+  assert.equal(response.rows[0].allowed, i <= 20);
+}
+await db.exec('reset role');
+const leadId = (await db.query("select id from public.leads where name = 'mine'")).rows[0].id;
+await asUser(ids.admin, async () => {
+  await db.query('select public.admin_append_lead_note($1, $2)', [leadId, 'Primeira orientação']);
+  await db.query('select public.admin_append_lead_note($1, $2)', [leadId, 'Segunda orientação']);
+});
+const supervised = (await db.query('select notes, historico from public.leads where id = $1', [leadId])).rows[0];
+assert.match(supervised.notes, /Primeira orientação[\s\S]*Segunda orientação/);
+assert.equal(supervised.historico.at(-1).operador_id, ids.admin);
+
+// Atomic logout closes own log, pause, session and presence; never another operator.
+await db.query("insert into public.work_sessions(operator_id) values ($1), ($2)", [ids.operator, ids.other]);
+await db.query("insert into public.pause_events(operator_id,reason,started_at) values ($1,'Café', now() - interval '2 minutes'),($2,'Café', now() - interval '2 minutes')", [ids.operator, ids.other]);
+await db.query("insert into public.operator_presence(operator_id,state) values ($1,'pausa'),($2,'pausa')", [ids.operator, ids.other]);
+await db.exec('set role anon');
+await assert.rejects(db.query('select public.finish_own_shift()'), /permission denied/);
+await db.exec('reset role');
+await asUser(ids.operator, async () => {
+  await db.query(`select public.finish_own_shift('{"contacts_count":7,"conversions_count":2}', true)`);
+});
+const closed = (await db.query('select * from public.expediente_logs where operator_id = $1', [ids.operator])).rows[0];
+assert.ok(closed.ended_at);
+assert.equal(closed.contacts_count, 7);
+assert.equal(closed.conversions_count, 2);
+assert.ok((await db.query('select ended_at from public.pause_events where operator_id = $1', [ids.operator])).rows[0].ended_at);
+assert.ok((await db.query('select ended_at from public.work_sessions where operator_id = $1', [ids.operator])).rows[0].ended_at);
+assert.equal((await db.query('select state from public.operator_presence where operator_id = $1', [ids.operator])).rows[0].state, 'offline');
+assert.equal((await db.query('select ended_at from public.expediente_logs where operator_id = $1', [ids.other])).rows[0].ended_at, null);
+assert.equal((await db.query('select ended_at from public.pause_events where operator_id = $1', [ids.other])).rows[0].ended_at, null);
+await asUser(ids.operator, async () => { await db.query("select public.finish_own_shift('{}', true)"); });
+assert.deepEqual((await db.query('select * from public.expediente_logs where operator_id = $1', [ids.operator])).rows[0], closed);
+await db.exec(await readFile(new URL('../supabase/migrations/020_usernames_and_shift_logout.sql', import.meta.url), 'utf8'));
+console.log('PASS: usernames, throttling, supervisor audit, atomic logout, isolation and repeatable closure.');
 if (process.argv[2]) {
   const bundle = await readFile(process.argv[2], 'utf8');
   await db.exec(bundle);

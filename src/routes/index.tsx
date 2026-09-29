@@ -1,3 +1,4 @@
+import { loginWithUsername } from "@/lib/account-actions";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Flame, Lock, User } from "lucide-react";
@@ -58,24 +59,13 @@ function LoginPage() {
     e.preventDefault();
     setError(null);
     const value = email.trim();
-    if (!value) return setError("Informe seu e-mail.");
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return setError("Use um e-mail válido.");
+    if (!value) return setError("Informe seu usuário.");
     if (password.length < 4) return setError("A senha deve ter pelo menos 4 caracteres.");
 
     setLoading(true);
 
-    const { data, error: authError } = await supabase.auth.signInWithPassword({
-      email: value,
-      password,
-    });
-
-    if (authError) {
-      setLoading(false);
-      if (authError.message.includes("Invalid login credentials")) {
-        return setError("E-mail ou senha incorretos.");
-      }
-      return setError(authError.message);
-    }
+    try {
+    const data = await loginWithUsername(value, password);
 
     if (data.user) {
       // Fetch profile to determine redirect
@@ -97,7 +87,9 @@ function LoginPage() {
       }
     }
 
-    setLoading(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível entrar.");
+    } finally { setLoading(false); }
   };
 
   if (checkingSession) {
@@ -145,20 +137,20 @@ function LoginPage() {
           <div>
             <h2 className="text-2xl font-bold">Acesso ao painel</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Entre com seu e-mail corporativo.
+              Entre com seu usuário e senha.
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="login">E-mail</Label>
+            <Label htmlFor="login">Usuário</Label>
             <div className="relative">
               <User className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 id="login"
-                type="email"
+                type="text"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="voce@empresa.com"
+                placeholder="Seu usuário"
                 className="pl-9"
                 autoComplete="username"
               />

@@ -1,3 +1,4 @@
+import { finishOwnShift } from "./shift-actions";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -826,6 +827,11 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
 
     startShift: async () => {
       const nowIso = new Date().toISOString();
+      const { data: session, error: sessionError } = await supabase.from("work_sessions")
+        .upsert({ operator_id: operatorId, date: nowIso.slice(0, 10), ended_at: null }, { onConflict: "operator_id,date" })
+        .select("id").single();
+      if (sessionError) { toast.error("Não foi possível iniciar o expediente."); return; }
+      sessionIdRef.current = session.id;
       await supabase.from("expediente_logs").update({ ended_at: nowIso }).eq("operator_id", operatorId).is("ended_at", null);
 
       const { data: newLog } = await supabase.from("expediente_logs").insert({
@@ -848,25 +854,13 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
     },
 
     finishShift: async () => {
-      const nowIso = new Date().toISOString();
-      if (activeExpedienteId) {
-        const startMs = shiftStartedAt ? new Date(shiftStartedAt).getTime() : Date.now();
-        const durationSec = Math.max(1, Math.floor((Date.now() - startMs) / 1000));
-
-        await supabase.from("expediente_logs").update({
-          ended_at: nowIso,
-          duration_seconds: durationSec,
-          contacts_count: contacts,
-          conversions_count: conversions,
-          talk_seconds: talkSecondsRef.current,
-          pause_seconds: pauseSecondsRef.current,
-        }).eq("id", activeExpedienteId);
-      }
-
+      await finishOwnShift({ contacts_count: contacts, conversions_count: conversions, talk_seconds: talkSecondsRef.current });
       setShiftActive(false);
       setShiftStartedAt(null);
       setActiveExpedienteId(null);
-      await pushPresence(operatorId, { state: "ocioso", current_lead: null });
+      setPause(null);
+      setCallOpen(false);
+      setCallStart(null);
       toast.success("Expediente finalizado com sucesso!");
     },
   };
@@ -876,6 +870,8 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
 
   return <CrmContext.Provider value={value}>{children}</CrmContext.Provider>;
 }
+
+export function useOptionalCrm() { return useContext(CrmContext); }
 
 export function useCrm() {
   const ctx = useContext(CrmContext);

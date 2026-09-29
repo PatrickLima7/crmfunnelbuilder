@@ -32,16 +32,16 @@ export type LeadInput = {
 };
 
 /** Fetch all leads assigned to this operator */
-export function useLeads(operatorId: string) {
+export function useLeads(operatorId: string, enabled = true) {
   const qc = useQueryClient();
   useEffect(() => {
-    if (!operatorId) return;
+    if (!operatorId || !enabled) return;
     const channel = supabase.channel(`leads-${operatorId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "leads", filter: `assigned_to=eq.${operatorId}` }, () => {
         void qc.invalidateQueries({ queryKey: [...LEADS_QUERY_KEY, operatorId] });
       }).subscribe();
     return () => { void supabase.removeChannel(channel); };
-  }, [operatorId, qc]);
+  }, [operatorId, qc, enabled]);
   return useQuery({
     queryKey: [...LEADS_QUERY_KEY, operatorId],
     queryFn: async (): Promise<Lead[]> => {
@@ -57,7 +57,7 @@ export function useLeads(operatorId: string) {
       }
       return all;
     },
-    enabled: !!operatorId,
+    enabled: !!operatorId && enabled,
     refetchInterval: 15000,
   });
 }

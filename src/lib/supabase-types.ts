@@ -11,6 +11,7 @@ export type Database = {
         Row: {
           id: string;
           name: string;
+          username: string;
           role: "admin" | "operator";
           cpf: string | null;
           avatar_url: string | null;
@@ -22,6 +23,7 @@ export type Database = {
         Insert: {
           id?: string;
           name: string;
+          username?: string;
           role?: "admin" | "operator";
           cpf?: string | null;
           avatar_url?: string | null;
@@ -32,6 +34,7 @@ export type Database = {
         };
         Update: {
           name?: string;
+          username?: string;
           role?: "admin" | "operator";
           cpf?: string | null;
           avatar_url?: string | null;
@@ -106,7 +109,7 @@ export type Database = {
         Row: {
           id: string;
           operator_id: string;
-          state: "ligacao" | "whatsapp" | "ocioso" | "pausa";
+          state: "ligacao" | "whatsapp" | "ocioso" | "pausa" | "offline";
           pause_reason: string | null;
           current_lead: string | null;
           contacts_today: number;
@@ -118,7 +121,7 @@ export type Database = {
         Insert: {
           id?: string;
           operator_id: string;
-          state?: "ligacao" | "whatsapp" | "ocioso" | "pausa";
+          state?: "ligacao" | "whatsapp" | "ocioso" | "pausa" | "offline";
           pause_reason?: string | null;
           current_lead?: string | null;
           contacts_today?: number;
@@ -128,7 +131,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
-          state?: "ligacao" | "whatsapp" | "ocioso" | "pausa";
+          state?: "ligacao" | "whatsapp" | "ocioso" | "pausa" | "offline";
           pause_reason?: string | null;
           current_lead?: string | null;
           contacts_today?: number;
@@ -459,6 +462,14 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
+      admin_append_lead_note: {
+        Args: { p_lead_id: string; p_note: string };
+        Returns: undefined;
+      };
+      finish_own_shift: {
+        Args: { p_summary?: Json; p_logout?: boolean };
+        Returns: undefined;
+      };
       is_admin: {
         Args: Record<string, never>;
         Returns: boolean;
