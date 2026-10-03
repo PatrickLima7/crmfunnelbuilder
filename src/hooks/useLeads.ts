@@ -67,6 +67,7 @@ export function useCreateLead(operatorId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (lead: LeadInput) => {
+      if (!operatorId) throw new Error("Consultor responsável não identificado. Entre novamente.");
       const now = new Date().toISOString();
       const phoneClean = lead.phone ? lead.phone.trim() : null;
 
@@ -76,6 +77,7 @@ export function useCreateLead(operatorId: string) {
           .from("leads")
           .select("*")
           .eq("phone", phoneClean)
+          .eq("assigned_to", operatorId)
           .maybeSingle();
         if (lookupError) throw lookupError;
 
@@ -285,118 +287,6 @@ export function useDeleteLead(operatorId: string) {
       qc.invalidateQueries({ queryKey: LEADS_QUERY_KEY });
       qc.invalidateQueries({ queryKey: ["admin-leads"] });
       toast.success("Lead removido.");
-    },
-  });
-}
-
-/** Seed realistic sample leads for quick testing */
-export function useSeedSampleLeads(operatorId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async () => {
-      const now = new Date().toISOString();
-      const samples: LeadInput[] = [
-        {
-          name: "Carlos Eduardo Silva",
-          phone: "(11) 98765-4321",
-          email: "carlos.silva@email.com",
-          city: "São Paulo",
-          state: "SP",
-          profession: "Engenheiro de Software",
-          company: "Tech Solutions",
-          temperature: "quente",
-          midia: "Instagram",
-          campanha: "Campanha Pós-Graduação",
-          curso: "MBA em IA & Gestão",
-          notes: "Lead muito interessado, pediu informações sobre pagamento parcelado.",
-        },
-        {
-          name: "Mariana Oliveira",
-          phone: "(21) 99887-6655",
-          email: "mariana.oliveira@gmail.com",
-          city: "Rio de Janeiro",
-          state: "RJ",
-          profession: "Médica Veterinária",
-          temperature: "morno",
-          midia: "Google Ads",
-          campanha: "Search Saude 2026",
-          curso: "Especialização Dermatologia",
-          notes: "Gostou da grade curricular. Precisa alinhar horário de plantão.",
-        },
-        {
-          name: "Fernanda Ribeiro",
-          phone: "(31) 99123-8899",
-          email: "fernanda.ribeiro@outlook.com",
-          city: "Belo Horizonte",
-          state: "MG",
-          profession: "Arquiteta",
-          company: "Studio Design",
-          temperature: "quente",
-          midia: "LinkedIn",
-          campanha: "Executivos MG",
-          curso: "Design de Interiores Avançado",
-          notes: "Solicitou contato urgente por WhatsApp.",
-        },
-        {
-          name: "Roberto Mendes",
-          phone: "(41) 98844-3322",
-          email: "roberto.mendes@empresa.com.br",
-          city: "Curitiba",
-          state: "PR",
-          profession: "Administrador de Empresas",
-          temperature: "frio",
-          midia: "Site / Landing Page",
-          campanha: "Orgânico",
-          curso: "Gestão Financeira",
-          notes: "Cadastrou no formulário do site.",
-        },
-        {
-          name: "Juliana Castro",
-          phone: "(85) 99777-1122",
-          email: "juliana.castro@bol.com.br",
-          city: "Fortaleza",
-          state: "CE",
-          profession: "Advogada",
-          temperature: "morno",
-          midia: "Indicação",
-          campanha: "Indicação de Alunos",
-          curso: "Direito Tributário",
-          notes: "Foi indicada pelo ex-aluno Lucas Mendes.",
-        },
-      ];
-
-      const rows = samples.map((s) => ({
-        name: s.name,
-        phone: s.phone ?? null,
-        email: s.email ?? null,
-        city: s.city ?? null,
-        state: s.state ?? null,
-        profession: s.profession ?? null,
-        company: s.company ?? null,
-        temperature: s.temperature ?? "morno",
-        origin: "manual",
-        status: "novo" as const,
-        assigned_to: operatorId,
-        notes: s.notes ?? null,
-        midia: s.midia ?? null,
-        campanha: s.campanha ?? null,
-        curso: s.curso ?? null,
-        historico: [{ ts: now, acao: "cadastro_teste", detalhes: "Lead fictício gerado para teste de atendimento" }],
-        data_primeiro_cadastro: now,
-        data_ultimo_cadastro: now,
-      }));
-
-      const { data, error } = await supabase.from("leads").insert(rows as any).select();
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: LEADS_QUERY_KEY });
-      qc.invalidateQueries({ queryKey: ["admin-leads"] });
-      toast.success(`${data?.length ?? 5} leads fictícios inseridos com sucesso para teste!`);
-    },
-    onError: (err: Error) => {
-      toast.error(`Erro ao gerar leads de teste: ${err.message}`);
     },
   });
 }

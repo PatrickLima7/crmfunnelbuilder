@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { AlertTriangle, Bell, Coffee, Flame, LogOut, Play, Square, Sparkles, Loader2 } from "lucide-react";
+import { AlertTriangle, Bell, Coffee, Flame, LogOut, Play, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -15,18 +15,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { formatClock } from "@/lib/crm-data";
 import { useCrm } from "@/lib/crm-store";
-import { supabase } from "@/lib/supabase";
 import { useActivePauseTypes } from "@/hooks/usePauseConfig";
-import { useSeedSampleLeads } from "@/hooks/useLeads";
 import { ExpedienteFinishModal } from "./ExpedienteFinishModal";
 
-export function Topbar({ operator, operatorId }: { operator: string; operatorId?: string }) {
+export function Topbar({ operator }: { operator: string; operatorId?: string }) {
   const crm = useCrm();
   const qc = useQueryClient();
   const [signingOut, setSigningOut] = useState(false);
   const navigate = useNavigate();
   const { data: pauseTypes = [] } = useActivePauseTypes();
-  const seedLeads = useSeedSampleLeads(operatorId ?? "");
   
   const [clock, setClock] = useState("--:--:--");
   const [showFinishModal, setShowFinishModal] = useState(false);
@@ -111,29 +108,10 @@ export function Topbar({ operator, operatorId }: { operator: string; operatorId?
         )}
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          {/* Helper button to generate test leads */}
-          {operatorId && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-dashed border-primary/50 text-primary hover:bg-primary/10"
-              disabled={seedLeads.isPending}
-              onClick={() => seedLeads.mutate()}
-              title="Gerar 5 leads fictícios para teste rápido"
-            >
-              {seedLeads.isPending ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Sparkles className="size-3.5 text-primary" />
-              )}
-              Leads de Teste
-            </Button>
-          )}
-
           {/* Pause menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="warning" size="sm" disabled={!crm.shiftActive}>
+              <Button variant="warning" size="sm" disabled={!crm.shiftActive || !!crm.pause || crm.callOpen}>
                 <Coffee className="size-3.5" /> Pausa
               </Button>
             </DropdownMenuTrigger>

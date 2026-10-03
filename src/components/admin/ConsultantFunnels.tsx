@@ -1,3 +1,4 @@
+import { suggestCallback, validCallback } from "@/lib/callback-scheduling";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
@@ -113,6 +114,7 @@ function SupervisorLead({ lead, operator }: { lead: Lead; operator: Profile }) {
   const qc = useQueryClient();
   const update = useUpdateLead(operator.id);
   const [note, setNote] = useState("");
+  const [callbackDraft, setCallbackDraft] = useState<string | null>(null);
   const [savingNote, setSavingNote] = useState(false);
   async function save(updates: Partial<Lead>) {
     try { await update.mutateAsync({ id: lead.id, updates }); toast.success("Lead atualizado na carteira do consultor."); return true; }
@@ -142,9 +144,12 @@ function SupervisorLead({ lead, operator }: { lead: Lead; operator: Profile }) {
         onClick={() => void save({ temperature, ...(lead.status === "novo" ? { status: "contacted" as const } : {}) })}>{temperature}</Button>)}
       <Button variant="success" disabled={update.isPending || lead.status === "converted"} onClick={() => void save({ status: "converted", callback_at: null })}>Marcar convertido</Button>
     </div>
-    <DateTimePicker label="Agendar retorno para o consultor" value={lead.callback_at} onChange={(iso) => {
-      if (iso) void save({ callback_at: iso, ...(lead.status === "novo" ? { status: "contacted" as const } : {}) });
-    }} />
+    {callbackDraft === null ? <Button variant="outline" onClick={() => setCallbackDraft(suggestCallback())}>Agendar retorno para o consultor</Button> : <div className="space-y-2">
+      <DateTimePicker label="Agendar retorno para o consultor" value={callbackDraft} onChange={setCallbackDraft} required />
+      <Button disabled={update.isPending || !validCallback(callbackDraft)} onClick={async () => {
+        if (await save({ callback_at: callbackDraft, ...(lead.status === "novo" ? { status: "contacted" as const } : {}) })) setCallbackDraft(null);
+      }}>Confirmar retorno</Button>
+    </div>}
     <p className="text-xs text-muted-foreground">As alterações ficam na carteira de {operator.name}. Os contadores de atividade do consultor não são incrementados por estas ações.</p>
   </div>;
 }

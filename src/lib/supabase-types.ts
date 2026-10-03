@@ -462,6 +462,11 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
+      finish_lead_call: {
+        Args: { p_event_id: string; p_lead_id: string; p_outcome: string; p_started_at: string;
+          p_callback_at?: string | null; p_reason?: string | null; p_session_id?: string | null; p_contact_type?: string };
+        Returns: undefined;
+      };
       admin_append_lead_note: {
         Args: { p_lead_id: string; p_note: string };
         Returns: undefined;

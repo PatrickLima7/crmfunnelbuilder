@@ -89,6 +89,7 @@ function Dashboard() {
 function DashboardContent({ operator, operatorId }: { operator: string; operatorId: string }) {
   const crm = useCrm();
   const isShiftActive = crm.shiftActive;
+  const blocked = !isShiftActive || !!crm.pause;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -96,8 +97,10 @@ function DashboardContent({ operator, operatorId }: { operator: string; operator
       <div className="relative min-h-0 flex-1 overflow-hidden">
         {/* Main 3-column operational layout with grayscale / opacity block when shift is NOT started */}
         <div
+          inert={blocked}
+          aria-disabled={blocked}
           className={`grid h-full min-h-0 w-full grid-cols-1 overflow-y-auto transition-all duration-300 lg:grid-cols-[260px_minmax(0,1fr)_300px] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden ${
-            !isShiftActive ? "grayscale opacity-40 pointer-events-none select-none filter cursor-not-allowed" : ""
+            blocked ? "grayscale opacity-40 pointer-events-none select-none filter cursor-not-allowed" : ""
           }`}
         >
           <MetricsSidebar />
@@ -106,14 +109,14 @@ function DashboardContent({ operator, operatorId }: { operator: string; operator
         </div>
 
         {/* Overlay banner prompting consultant to start shift if not started */}
-        {!isShiftActive && (
+        {blocked && (
           <div className="pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center px-4">
             <div className="flex items-center gap-2.5 rounded-full border border-warning/40 bg-background/95 px-5 py-2 text-xs font-bold text-warning shadow-xl backdrop-blur">
               <span className="relative flex size-2.5">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-warning opacity-75" />
                 <span className="relative inline-flex size-2.5 rounded-full bg-warning" />
               </span>
-              <span>Expediente não iniciado — Clique em "Iniciar Expediente" no topo verde para liberar o atendimento</span>
+              <span>{crm.pause ? "Em pausa — clique em Retomar no topo para liberar o atendimento" : 'Expediente não iniciado — Clique em "Iniciar Expediente" no topo verde para liberar o atendimento'}</span>
             </div>
           </div>
         )}

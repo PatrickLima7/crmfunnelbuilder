@@ -1,5 +1,5 @@
 import { crmDay, crmTime, crmDateTimeToIso } from "@/lib/lead-categories";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Calendar as CalendarIcon, Clock } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -29,8 +29,11 @@ export function DateTimePicker({
   const initial = parseInitialValue(value);
   const [date, setDate] = useState(initial.date);
   const [time, setTime] = useState(initial.time);
+  const emitted = useRef<string | undefined>(undefined);
 
   useEffect(() => {
+    if (value === emitted.current) return;
+    emitted.current = undefined;
     const parsed = parseInitialValue(value);
     setDate(parsed.date);
     setTime(parsed.time);
@@ -41,10 +44,16 @@ export function DateTimePicker({
     setTime(newTime);
     if (newDate && newTime) {
       try {
-        onChange(crmDateTimeToIso(newDate, newTime));
+        const iso = crmDateTimeToIso(newDate, newTime);
+        emitted.current = iso;
+        onChange(iso);
       } catch {
-        /* invalid date format */
+        emitted.current = "";
+        onChange("");
       }
+    } else {
+      emitted.current = "";
+      onChange("");
     }
   };
 
@@ -62,6 +71,7 @@ export function DateTimePicker({
         <div className="relative">
           <Input
             type="date"
+            aria-label="Data do retorno"
             value={date}
             onChange={(e) => updateDateTime(e.target.value, time)}
             className="h-9 text-xs pl-8 font-mono"
@@ -73,6 +83,7 @@ export function DateTimePicker({
         <div className="relative">
           <Input
             type="time"
+            aria-label="Hora do retorno"
             value={time}
             onChange={(e) => updateDateTime(date, e.target.value)}
             className="h-9 text-xs pl-8 font-mono"

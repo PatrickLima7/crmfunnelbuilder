@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { suggestCallback, validCallback } from "@/lib/callback-scheduling";
+import { useState, useEffect } from "react";
 import { Calendar, CheckCircle2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -7,17 +8,13 @@ import { useCrm } from "@/lib/crm-store";
 
 export function Step3SchedulerModal() {
   const crm = useCrm();
-  const [callbackIso, setCallbackIso] = useState<string>(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    d.setHours(10, 0, 0, 0);
-    return d.toISOString();
-  });
+  const [callbackIso, setCallbackIso] = useState("");
+  useEffect(() => { if (crm.step3ScheduleOpen) { setCallbackIso(suggestCallback()); setError(null); } }, [crm.step3ScheduleOpen]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const handleConfirm = async () => {
-    if (!callbackIso) {
+    if (!validCallback(callbackIso)) {
       setError("Por favor, selecione data e hora para o retorno.");
       return;
     }
@@ -25,6 +22,8 @@ export function Step3SchedulerModal() {
     setSubmitting(true);
     try {
       await crm.finishStep3Schedule(callbackIso);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Falha ao salvar retorno.");
     } finally {
       setSubmitting(false);
     }

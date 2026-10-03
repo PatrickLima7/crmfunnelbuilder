@@ -1,3 +1,5 @@
+import { suggestCallback, validCallback } from "@/lib/callback-scheduling";
+import { toast } from "sonner";
 import { matchesLeadFilter, type LeadFilter, CRM_TIME_ZONE } from "@/lib/lead-categories";
 import { useEffect, useState } from "react";
 import {
@@ -203,7 +205,7 @@ export function OpportunitiesPanel({ operatorId, leadData, selectedLeadId, onSel
         {!isLoading && singleTabList.map((lead) => (
           <LeadCard key={lead.id} lead={lead} isSelected={(selectedLeadId ?? crm?.lead.realId) === lead.id} supervising={!!onSelectLead}
             onSelect={() => onSelectLead ? onSelectLead(lead) : crm?.selectLead(lead as any)}
-            onUpdate={(updates) => updateLead.mutate({ id: lead.id, updates })} operatorId={operatorId} />
+            onUpdate={async (updates) => { try { await updateLead.mutateAsync({ id: lead.id, updates }); return true; } catch { toast.error("Não foi possível salvar o lead. Tente novamente."); return false; } }} operatorId={operatorId} />
         ))}
       </div>
 
@@ -235,7 +237,7 @@ function LeadCard({ lead, isSelected, onSelect, onUpdate, operatorId, supervisin
   lead: Lead;
   isSelected?: boolean;
   onSelect: () => void;
-  onUpdate: (u: Partial<Lead>) => void;
+  onUpdate: (u: Partial<Lead>) => Promise<boolean>;
   operatorId: string;
 }) {
   const deleteLead = useDeleteLead(operatorId);
@@ -244,6 +246,8 @@ function LeadCard({ lead, isSelected, onSelect, onUpdate, operatorId, supervisin
     : TEMP_CONFIG[lead.temperature as Temperature] ?? { label: "Não classificado", icon: Thermometer, badge: "bg-muted text-muted-foreground" };
   const Icon = temp.icon;
   const [showScheduler, setShowScheduler] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [savingSchedule, setSavingSchedule] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
 
   let callbackFormatted: string | null = null;
@@ -324,7 +328,7 @@ function LeadCard({ lead, isSelected, onSelect, onUpdate, operatorId, supervisin
         <Button size="sm" variant={isSelected ? "success" : "default"} className="h-7 flex-1 gap-1 text-[11px]" onClick={onSelect}>
           <PhoneCall className="size-3" /> {supervising ? (isSelected ? "Selecionado" : "Ver lead") : (isSelected ? "Em atendimento" : "Atender")}
         </Button>
-        <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" onClick={() => setShowScheduler(!showScheduler)}>
+        <Button size="sm" variant="outline" className="h-7 px-2 text-[11px]" onClick={() => { if (!showScheduler) setScheduledAt(suggestCallback()); setShowScheduler(!showScheduler); }}>
           <Calendar className="size-3" />
         </Button>
         <AlertDialog>
@@ -373,12 +377,15 @@ function LeadCard({ lead, isSelected, onSelect, onUpdate, operatorId, supervisin
         <div className="mt-2 space-y-2 rounded-lg border border-border bg-background p-2.5">
           <DateTimePicker
             label="Reagendar retorno exato:"
-            value={lead.callback_at}
-            onChange={(iso) => {
-              onUpdate({ callback_at: iso || null, ...(lead.status === "novo" ? { status: "contacted" as const } : {}) });
-              setShowScheduler(false);
-            }}
+            value={scheduledAt}
+            onChange={setScheduledAt}
           />
+          <Button size="sm" disabled={savingSchedule || !validCallback(scheduledAt)} onClick={async () => {
+            setSavingSchedule(true);
+            const saved = await onUpdate({ callback_at: scheduledAt, ...(lead.status === "novo" ? { status: "contacted" as const } : {}) });
+            setSavingSchedule(false);
+            if (saved) setShowScheduler(false);
+          }}>Confirmar retorno</Button>
         </div>
       )}
     </div>
@@ -450,7 +457,7 @@ function LeadForm({ onSubmit, loading }: {
       <Tabs defaultValue="principal" className="w-full">
         <TabsList className="grid w-full grid-cols-2 text-xs mb-4">
           <TabsTrigger value="principal">1. Principal (Dados Gerais)</TabsTrigger>
-          <TabsTrigger value="agendamento">2. Agendamento de Contato</TabsTrigger>
+          <TabsTrigger value="agendamento" onClick={() => { if (!form.callback_at) setForm((f) => ({ ...f, callback_at: suggestCallback() })); }}>2. Agendamento de Contato</TabsTrigger>
         </TabsList>
 
         {/* ── Aba 1: Principal ── */}

@@ -1,9 +1,10 @@
+import { requiresCallback, validCallback } from "./callback-scheduling";
 import { finishOwnShift } from "./shift-actions";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { generateLead, insightFor, STEPS, type Lead, type LeadStatus, type StepKey } from "./crm-data";
-import { type CallOutcome, OUTCOME_TEMPERATURE } from "./call-script";
+import { type CallOutcome } from "./call-script";
 import { supabase } from "./supabase";
 import { LEADS_QUERY_KEY } from "@/hooks/useLeads";
 
@@ -227,6 +228,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
   const [alerts, setAlerts] = useState<string[]>([]);
   const [blockingAlertInfo, setBlockingAlertInfo] = useState<{ type: "pause" | "idle" } | null>(null);
   const [step3ScheduleOpen, setStep3ScheduleOpen] = useState(false);
+  const callEventIdRef = useRef<string | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const talkSecondsRef = useRef(0);
   const pauseSecondsRef = useRef(0);
@@ -572,10 +574,11 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
     },
 
     finishStep3Schedule: async (callbackAtIso: string) => {
-      setStep3ScheduleOpen(false);
+      if (!validCallback(callbackAtIso)) throw new Error("Defina data e hora válidas.");
+      if (!lead?.realId) throw new Error("Lead indisponível. Atualize a carteira.");
 
       if (lead?.realId) {
-        await supabase
+        const { error } = await supabase
           .from("leads")
           .update({
             status: "contacted",
@@ -583,9 +586,11 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
             callback_at: callbackAtIso,
             updated_at: new Date().toISOString(),
           })
-          .eq("id", lead.realId);
+          .eq("id", lead.realId).select("id").single();
+        if (error) throw new Error(error.message);
       }
 
+      setStep3ScheduleOpen(false);
       toast.success("✅ Retorno agendado com sucesso! Avançando para o próximo lead...");
       qc.invalidateQueries({ queryKey: [...LEADS_QUERY_KEY, operatorId] });
 
@@ -597,7 +602,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
     },
 
     closeStep3Schedule: () => {
-      setStep3ScheduleOpen(false);
+      toast.info("Confirme a data e hora do retorno antes de avançar.");
     },
 
     // stepIdx = index of the step (0=call_phone, 1=call_whatsapp)
@@ -605,6 +610,7 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       activeStepIdxRef.current = stepIdx;
       setConversations((c) => c + 1);
       setNegotiations((n) => n + 1);
+      callEventIdRef.current = crypto.randomUUID();
       setCallStart(Date.now());
       setCallOpen(true);
       void pushPresence(operatorId, { state: "ligacao", current_lead: lead?.name ?? null });
@@ -612,29 +618,21 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
 
     // callbackAt = ISO string of chosen datetime; motivoDesinteresse = optional reason for sem_interesse
     finishCall: async (outcome, callbackAt, motivoDesinteresse) => {
-      const ended = new Date().toISOString();
-      setCallOpen(false);
-      setCallStart(null);
-
-      // Lead answered or was classified — mark ALL steps as completed so remaining steps are skipped!
-      setStepDone([true, true, true]);
-      completedAt.current = Date.now();
-
+      if (!lead?.realId) throw new Error("Lead indisponível. Atualize a carteira.");
+      if (requiresCallback(outcome) && !validCallback(callbackAt)) throw new Error("Confirme data e hora do retorno.");
+      callEventIdRef.current ??= crypto.randomUUID();
+      const { error } = await supabase.rpc("finish_lead_call", {
+        p_event_id: callEventIdRef.current, p_lead_id: lead.realId, p_outcome: outcome,
+        p_started_at: new Date(callStart ?? Date.now()).toISOString(),
+        p_callback_at: callbackAt || null, p_reason: motivoDesinteresse || null,
+        p_session_id: sessionIdRef.current, p_contact_type: activeStepIdxRef.current === 1 ? "whatsapp" : "call",
+      });
+      if (error) throw new Error(`Não foi possível salvar o atendimento: ${error.message}`);
+      setCallOpen(false); setCallStart(null);
+      setStepDone([true, true, true]); completedAt.current = Date.now();
       const newContacts = contacts + 1;
       setContacts(newContacts);
-
       let newConversions = conversions;
-      const callbackDateIso: string | null = callbackAt ?? null;
-
-      // Map outcome → temperature and status
-      const temperature = OUTCOME_TEMPERATURE[outcome];
-      const newStatus =
-        outcome === "convertido" ? "converted" :
-        outcome === "sem_interesse" ? "blacklisted" :
-        ["numero_invalido"].includes(outcome) ? "inactive" :
-        "contacted";
-
-      if (!lead) return; // safety guard
 
       // Toast feedback
       if (outcome === "convertido") {
@@ -656,33 +654,6 @@ export function CrmProvider({ children, operatorId }: { children: ReactNode; ope
       } else {
         toast.warning("Lead marcado como inválido/frio.");
       }
-
-      // Update lead in DB — temperature + status + callback
-      if (lead.realId) {
-        await supabase
-          .from("leads")
-          .update({
-            temperature,
-            status: newStatus as any,
-            callback_at: outcome === "sem_interesse" ? null : callbackDateIso,
-            updated_at: ended,
-          })
-          .eq("id", lead.realId);
-
-
-      }
-
-      await supabase.from("contact_events").insert({
-        operator_id: operatorId,
-        session_id: sessionIdRef.current,
-        lead_name: lead.name,
-        lead_phone: lead.phone,
-        contact_type: activeStepIdxRef.current === 1 ? "whatsapp" : "call",
-        outcome: outcome as any,
-        ...(motivoDesinteresse ? { motivo_desinteresse: motivoDesinteresse } : {}),
-        started_at: callStart ? new Date(callStart).toISOString() : new Date().toISOString(),
-        ended_at: ended,
-      });
 
       await pushPresence(operatorId, {
         state: "ocioso",

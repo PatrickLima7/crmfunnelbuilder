@@ -113,16 +113,16 @@ for (let i = 1; i <= 21; i++) {
 await db.exec('reset role');
 const leadId = (await db.query("select id from public.leads where name = 'mine'")).rows[0].id;
 await asUser(ids.admin, async () => {
-  await db.query('select public.admin_append_lead_note($1, $2)', [leadId, 'Primeira orientação']);
-  await db.query('select public.admin_append_lead_note($1, $2)', [leadId, 'Segunda orientação']);
+  await db.query('select public.admin_append_lead_note($1, $2)', [leadId, 'Primeira orientaÃ§Ã£o']);
+  await db.query('select public.admin_append_lead_note($1, $2)', [leadId, 'Segunda orientaÃ§Ã£o']);
 });
 const supervised = (await db.query('select notes, historico from public.leads where id = $1', [leadId])).rows[0];
-assert.match(supervised.notes, /Primeira orientação[\s\S]*Segunda orientação/);
+assert.match(supervised.notes, /Primeira orientaÃ§Ã£o[\s\S]*Segunda orientaÃ§Ã£o/);
 assert.equal(supervised.historico.at(-1).operador_id, ids.admin);
 
 // Atomic logout closes own log, pause, session and presence; never another operator.
 await db.query("insert into public.work_sessions(operator_id) values ($1), ($2)", [ids.operator, ids.other]);
-await db.query("insert into public.pause_events(operator_id,reason,started_at) values ($1,'Café', now() - interval '2 minutes'),($2,'Café', now() - interval '2 minutes')", [ids.operator, ids.other]);
+await db.query("insert into public.pause_events(operator_id,reason,started_at) values ($1,'CafÃ©', now() - interval '2 minutes'),($2,'CafÃ©', now() - interval '2 minutes')", [ids.operator, ids.other]);
 await db.query("insert into public.operator_presence(operator_id,state) values ($1,'pausa'),($2,'pausa')", [ids.operator, ids.other]);
 await db.exec('set role anon');
 await assert.rejects(db.query('select public.finish_own_shift()'), /permission denied/);
@@ -143,6 +143,47 @@ await asUser(ids.operator, async () => { await db.query("select public.finish_ow
 assert.deepEqual((await db.query('select * from public.expediente_logs where operator_id = $1', [ids.operator])).rows[0], closed);
 await db.exec(await readFile(new URL('../supabase/migrations/020_usernames_and_shift_logout.sql', import.meta.url), 'utf8'));
 console.log('PASS: usernames, throttling, supervisor audit, atomic logout, isolation and repeatable closure.');
+
+// Regression: creation stays restricted to an active consultant's own portfolio.
+let owned;
+await asUser(ids.operator, async () => {
+  owned = (await db.query("insert into public.leads(name,assigned_to) values ('new-owned',$1) returning id", [ids.operator])).rows[0].id;
+  await assert.rejects(db.query("insert into public.leads(name,assigned_to) values ('foreign',$1)", [ids.other]), /row-level security/);
+  await assert.rejects(db.query("insert into public.leads(name) values ('unassigned-by-operator')"), /row-level security/);
+});
+await asUser(ids.admin, async () => {
+  assert.equal((await db.query("insert into public.leads(name,assigned_to) values ('admin-create',$1) returning id", [ids.other])).rows.length, 1);
+});
+await asUser(ids.attacker, async () => {
+  await assert.rejects(db.query("insert into public.leads(name,assigned_to) values ('inactive-create',$1)", [ids.attacker]), /row-level security/);
+});
+const call = (id, outcome, callback = null, type = 'call', target = owned) => db.query(
+  "select public.finish_lead_call($1,$2,$3,now() - interval '1 minute',$4,null,null,$5)", [id,target,outcome,callback,type]);
+const eventId = '00000000-0000-0000-0001-000000000001';
+const callback = '2026-10-04T18:00:00Z';
+await asUser(ids.operator, async () => {
+  for (const outcome of ['interessado','pensar','retorno','desligou']) {
+    await assert.rejects(call(eventId,outcome), /data e hora/);
+    await assert.rejects(db.query("insert into public.contact_events(operator_id,contact_type,outcome) values ($1,'call',$2)", [ids.operator,outcome]), /contact_callback_required/);
+  }
+  await assert.rejects(call(eventId,'retorno',callback,'invalid'), /contact_type/);
+});
+assert.equal((await db.query('select status from public.leads where id=$1',[owned])).rows[0].status,'novo', 'event failure rolls back lead update');
+assert.equal((await db.query('select count(*)::int as n from public.contact_events where id=$1',[eventId])).rows[0].n,0);
+await asUser(ids.operator, async () => {
+  await call(eventId,'retorno',callback);
+  await call(eventId,'retorno',callback); // Retry must not count twice.
+});
+assert.equal((await db.query('select count(*)::int as n from public.contact_events where id=$1',[eventId])).rows[0].n,1);
+assert.equal(new Date((await db.query('select callback_at from public.leads where id=$1',[owned])).rows[0].callback_at).toISOString(),new Date(callback).toISOString());
+await asUser(ids.other, async () => { await assert.rejects(call('00000000-0000-0000-0001-000000000002','retorno',callback), /indisponível/); });
+await asUser(ids.admin, async () => { await call('00000000-0000-0000-0001-000000000003','desligou',callback); });
+await asUser(ids.operator, async () => {
+  await call('00000000-0000-0000-0001-000000000004','convertido');
+  await assert.rejects(db.query("update public.app_config set value='[]' where key='insight_messages' returning key").then(r => { if (!r.rows.length) throw Error('denied'); }), /denied|row-level/);
+});
+await db.exec(await readFile(new URL('../supabase/migrations/021_lead_registration_and_callbacks.sql', import.meta.url),'utf8'));
+console.log('PASS: operator/admin lead creation, ownership, required callback, atomic save, retries, admin supervision and protected insights.');
 if (process.argv[2]) {
   const bundle = await readFile(process.argv[2], 'utf8');
   await db.exec(bundle);

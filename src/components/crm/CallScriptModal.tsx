@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { requiresCallback, validCallback, suggestCallback } from "@/lib/callback-scheduling";
+import { useState, useRef } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -40,12 +41,10 @@ export function CallScriptModal() {
   const [asking, setAsking] = useState(false);
   const [outcome, setOutcome] = useState<CallOutcome | null>(null);
   const [semInteresseMotivo, setSemInteresseMotivo] = useState<SemInteresseMotivo | null>(null);
-  const [callbackIso, setCallbackIso] = useState<string>(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    d.setHours(10, 0, 0, 0);
-    return d.toISOString();
-  });
+  const [callbackIso, setCallbackIso] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [retornoError, setRetornoError] = useState<string | null>(null);
 
   const safeIndex = Math.min(index, Math.max(0, steps.length - 1));
@@ -60,10 +59,8 @@ export function CallScriptModal() {
     setAsking(false);
     setOutcome(null);
     setSemInteresseMotivo(null);
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    d.setHours(10, 0, 0, 0);
-    setCallbackIso(d.toISOString());
+    setCallbackIso("");
+    setConfirmed(false);
     setRetornoError(null);
   };
 
@@ -71,34 +68,24 @@ export function CallScriptModal() {
   const needsScheduling = outcome !== null && outcome !== "sem_interesse";
 
   const validateAndFinish = async () => {
-    if (!outcome) return;
-
-    // sem_interesse: motivo obrigatório, sem agendamento
-    if (outcome === "sem_interesse") {
-      if (!semInteresseMotivo) {
-        setRetornoError("Selecione o motivo do desinteresse para continuar.");
-        return;
-      }
-      setRetornoError(null);
-      await crm.finishCall(outcome, undefined, semInteresseMotivo);
+    if (!outcome || savingRef.current) return;
+    if (outcome === "sem_interesse" && !semInteresseMotivo) {
+      setRetornoError("Selecione o motivo do desinteresse."); return;
+    }
+    if (requiresCallback(outcome) && (!validCallback(callbackIso) || !confirmed)) {
+      setRetornoError("Defina e confirme a data e hora do retorno antes de encerrar."); return;
+    }
+    if (callbackIso && !validCallback(callbackIso)) {
+      setRetornoError("Data e hora inválidas."); return;
+    }
+    savingRef.current = true; setSaving(true); setRetornoError(null);
+    try {
+      await crm.finishCall(outcome, outcome === "sem_interesse" || !confirmed ? undefined : callbackIso || undefined,
+        semInteresseMotivo ?? undefined);
       reset();
-      return;
-    }
-
-    let selectedCallbackIso: string | undefined = undefined;
-
-    if (needsScheduling) {
-      if (callbackIso) {
-        selectedCallbackIso = callbackIso;
-      } else if (outcome === "retorno") {
-        setRetornoError("Por favor, selecione data e hora de retorno.");
-        return;
-      }
-    }
-
-    setRetornoError(null);
-    await crm.finishCall(outcome, selectedCallbackIso);
-    reset();
+    } catch (error) {
+      setRetornoError(error instanceof Error ? error.message : "Não foi possível salvar. Tente novamente.");
+    } finally { savingRef.current = false; setSaving(false); }
   };
 
   return (
@@ -253,10 +240,13 @@ export function CallScriptModal() {
               <div className="space-y-2">
                 {CALL_OUTCOMES.map((o) => (
                   <button
+                    disabled={saving}
                     key={o.key}
                     type="button"
                     onClick={() => {
                       setOutcome(o.key);
+                      setCallbackIso(o.key === "sem_interesse" ? "" : suggestCallback());
+                      setConfirmed(false);
                       setSemInteresseMotivo(null);
                       setRetornoError(null);
                     }}
@@ -315,32 +305,36 @@ export function CallScriptModal() {
                     label={
                       outcome === "convertido"
                         ? "Definir data e hora do retorno de pós-venda (opcional)"
-                        : `Definir data e hora do retorno ${outcome === "retorno" ? "(obrigatório)" : "(opcional)"}`
+                        : `Definir data e hora do retorno ${requiresCallback(outcome) ? "(obrigatório)" : "(opcional)"}`
                     }
+                    required={requiresCallback(outcome)}
                     value={callbackIso}
                     onChange={(iso) => {
                       setCallbackIso(iso);
+                      setConfirmed(false);
                       setRetornoError(null);
                     }}
                     error={retornoError}
                   />
+                  {<label className="flex items-center gap-2 text-xs font-semibold"><input type="checkbox" checked={confirmed} disabled={saving || !validCallback(callbackIso)} onChange={(e) => setConfirmed(e.target.checked)} />{requiresCallback(outcome) ? "Confirmo esta data e hora com o cliente" : "Agendar retorno de pós-venda nesta data e hora"}</label>}
                 </div>
               )}
 
+              {retornoError && <p role="alert" className="text-xs text-destructive">{retornoError}</p>}
               <div className="flex gap-2 pt-2">
-                <Button variant="secondary" className="flex-1" onClick={() => setAsking(false)}>
+                <Button variant="secondary" className="flex-1" disabled={saving} onClick={() => setAsking(false)}>
                   Voltar à ligação
                 </Button>
                 <Button
                   variant="destructive"
                   className="flex-1"
                   disabled={
-                    !outcome ||
+                    saving || !outcome ||
                     (outcome === "sem_interesse" && !semInteresseMotivo)
                   }
                   onClick={() => void validateAndFinish()}
                 >
-                  Encerrar ligação
+                  {saving ? "Salvando..." : "Encerrar ligação"}
                 </Button>
               </div>
             </div>

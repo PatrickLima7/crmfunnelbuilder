@@ -1,4 +1,5 @@
-import { Activity, Flame, Sparkles, Target, TrendingUp, Users, ThermometerSun, RotateCcw, Zap, Layers, Sprout } from "lucide-react";
+import { InsightCard } from "./InsightCard";
+import { Activity, Flame, Target, TrendingUp, Users, ThermometerSun, RotateCcw, Zap, Layers, Sprout } from "lucide-react";
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useCrm } from "@/lib/crm-store";
 
@@ -67,14 +68,7 @@ export function MetricsSidebar() {
         <Metric icon={Sprout} label="Em Nutrição" value={String((crm as any).nutritionLeads ?? 0)} tone="warning" />
       </div>
 
-      <div className="shrink-0 rounded-[var(--radius)] border border-success/40 bg-success/10 p-2">
-        <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-success">
-          <Sparkles className="size-3.5" /> Insight
-        </p>
-        <p className="mt-0.5 text-xs leading-snug">{crm.insight}</p>
-      </div>
-
-
+      <InsightCard />
 
       <div className="stat-card flex min-h-0 flex-1 flex-col">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
